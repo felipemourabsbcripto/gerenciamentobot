@@ -1,0 +1,24 @@
+# Telegram Bot
+python-telegram-bot>=20.7
+
+# HTTP Requests
+aiohttp>=3.9.1
+requests>=2.31.0
+certifi>=2023.0.0
+
+# Database
+sqlalchemy>=2.0.45
+aiosqlite>=0.22.0
+greenlet>=3.0.0
+
+# Environment Variables
+python-dotenv>=1.0.0
+
+# Scheduling
+apscheduler>=3.10.4
+
+# Data Validation
+pydantic>=2.5.2
+
+# Async utilities
+asyncio-throttle>=1.0.2

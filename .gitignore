@@ -1,0 +1,49 @@
+# Ambiente virtual
+.venv/
+venv/
+env/
+ENV/
+
+# Variáveis de ambiente (NUNCA subir!)
+.env
+.env.local
+.env.production
+
+# Banco de dados
+data/*.db
+data/*.db-journal
+*.sqlite3
+
+# Logs
+logs/
+*.log
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+*.egg-info/
+dist/
+build/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Sistema
+.DS_Store
+Thumbs.db
+
+# Arquivos temporários
+*.tmp
+*.temp
+output.txt
+
+# Scripts de migração/fix pontuais
+fix_*.py
+migrate_*.py
+test_*.py
