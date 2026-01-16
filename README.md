@@ -1,6 +1,6 @@
 # Crypto Portfolio Telegram Bot
 
-Um bot Telegram para gerenciamento de carteira de criptomoedas com integração CoinGecko.
+Um bot Telegram para gerenciamento de carteira de criptomoedas com integração Binance/CCXT para dados de mercado.
 
 ## 🚀 Funcionalidades
 
@@ -8,9 +8,12 @@ Um bot Telegram para gerenciamento de carteira de criptomoedas com integração 
 - 🔔 **Alertas Automáticos**:
   - 🔴 Alerta quando um ativo cai **30%+** (oportunidade de preço médio)
   - 🟢 Alerta quando um ativo sobe **100%+** (recomendação de venda parcial de 50%)
-- 📈 **Integração CoinGecko**: Dados de preços em tempo real
+  - ⚠️ Alertas de Death Cross (MA50 cruza abaixo da MA200)
+- 📈 **Dados em Tempo Real**: Preços via Binance API (gratuito)
+- 📉 **Análise Técnica**: RSI, MACD, Médias Móveis, Bollinger Bands e mais
 - 💹 **Cálculo de Preço Médio**: Registre novas compras e calcule automaticamente o preço médio
 - 📤 **Registro de Vendas**: Acompanhe vendas parciais e lucros realizados
+- 💼 **Gestão de Futuros**: Calculadora de risco para trades alavancados
 - ⌨️ **Interface Inline**: Toda interação através de botões inline para melhor usabilidade
 
 ## 📁 Estrutura do Projeto
