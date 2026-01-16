@@ -228,7 +228,14 @@ class FuturesRepository:
         timeframe: str,
         zone_used: str = "management",
         take_profit: Optional[float] = None,
-        notes: Optional[str] = None
+        notes: Optional[str] = None,
+        target_1_price: Optional[float] = None,
+        target_1_percent: Optional[float] = None,
+        target_2_price: Optional[float] = None,
+        target_2_percent: Optional[float] = None,
+        target_3_price: Optional[float] = None,
+        target_3_percent: Optional[float] = None,
+        allocation_percent: Optional[float] = None
     ) -> FuturesTrade:
         """Create a new futures trade with risk management data."""
         pair = pair.upper().replace("/", "").replace("-", "")
@@ -254,7 +261,14 @@ class FuturesRepository:
             is_altcoin=is_altcoin,
             risk_level=risk_level,
             notes=notes,
-            status="open"
+            status="open",
+            target_1_price=target_1_price,
+            target_1_percent=target_1_percent,
+            target_2_price=target_2_price,
+            target_2_percent=target_2_percent,
+            target_3_price=target_3_price,
+            target_3_percent=target_3_percent,
+            allocation_percent=allocation_percent
         )
         self.session.add(trade)
         await self.session.flush()

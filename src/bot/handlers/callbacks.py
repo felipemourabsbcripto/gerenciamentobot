@@ -13,6 +13,7 @@ from src.services.tradingview_service import TradingViewService
 from src.services.technical_analysis import TechnicalAnalysisService
 from src.services.trend_analysis_service import trend_analysis_service, TrendDirection
 from src.utils import KeyboardBuilder, MessageFormatter
+from src.utils.formatters import format_us_price
 from src.utils.logger import get_logger
 from src.config.settings import settings
 
@@ -192,8 +193,20 @@ async def callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             side = data.replace("futures_side_", "")
             await handle_futures_side(query, context, side)
         elif data.startswith("futures_lev_"):
-            leverage = int(data.replace("futures_lev_", ""))
-            await handle_futures_leverage(query, context, leverage)
+            if data == "futures_lev_custom":
+                await handle_futures_custom_leverage(query, context)
+            else:
+                leverage = int(data.replace("futures_lev_", ""))
+                await handle_futures_leverage(query, context, leverage)
+        elif data == "futures_leverage_info":
+            await handle_futures_leverage_info(query)
+        elif data.startswith("futures_tf_"):
+            timeframe = data.replace("futures_tf_", "")
+            await handle_futures_timeframe_selection(query, context, timeframe)
+        elif data == "futures_add_target":
+            await handle_futures_add_target(query, context)
+        elif data == "futures_done_targets":
+            await handle_futures_done_targets(query, context)
         elif data == "futures_confirm" or data == "futures_confirm_risky":
             await handle_futures_confirm(query, context, user.id)
         elif data.startswith("futures_detail_"):
@@ -2164,16 +2177,20 @@ async def handle_futures_add(query, context: ContextTypes.DEFAULT_TYPE):
     
     await query.edit_message_text(
         "📝 **Novo Trade Futuros**\n\n"
+        "📋 **Etapa 1/8 - Par de negociação**\n\n"
         "Digite o **par** do trade:\n\n"
-        "Exemplos: `BTCUSDT`, `ETHUSDT`, `SOLUSDC`, `BTCETH`\n\n"
-        "💡 Você pode digitar apenas o símbolo (ex: `BTC`) e será usado USDT como quote.",
+        "Exemplos: `BTC/USDT`, `ETH/USDT`, `SOL`, `DOGE`\n"
+        "Formatos especiais: `BTC.P`, `USDT.P`, `TOTAL`\n\n"
+        "💡 Use `/` entre os pares. Se digitar apenas o símbolo (ex: `BTC`), será usado USDT como quote.",
         reply_markup=KeyboardBuilder.cancel_action(),
         parse_mode=ParseMode.MARKDOWN
     )
 
 
 async def handle_futures_side(query, context: ContextTypes.DEFAULT_TYPE, side: str):
-    """Handle futures trade side selection."""
+    """Handle futures trade side selection - Step 3."""
+    from src.utils.formatters import format_us_price, MessageFormatter
+    
     if 'futures_trade' not in context.user_data:
         await query.edit_message_text(
             "❌ Sessão expirada. Inicie novamente.",
@@ -2182,21 +2199,30 @@ async def handle_futures_side(query, context: ContextTypes.DEFAULT_TYPE, side: s
         return
     
     context.user_data['futures_trade']['side'] = side
+    context.user_data['futures_trade']['step'] = 3
     pair = context.user_data['futures_trade'].get('pair', '???')
     is_altcoin = context.user_data['futures_trade'].get('is_altcoin', False)
     
+    step_summary = MessageFormatter.futures_registration_step(3, context.user_data['futures_trade'])
+    
     await query.edit_message_text(
-        f"📝 **Novo Trade: {pair}**\n\n"
-        f"Lado: {'🟢 LONG' if side == 'long' else '🔴 SHORT'}\n\n"
+        step_summary + "\n\n"
+        "━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
+        f"✅ **Etapa 3/8 concluída!**\n\n"
+        "📝 **Etapa 4/8 - Alavancagem**\n\n"
         "Selecione a **alavancagem**:\n\n"
-        + ("⚠️ **ATENÇÃO:** Este é um altcoin. Alavancagem >3x é arriscada!\n" if is_altcoin else ""),
+        + ("⚠️ **ATENÇÃO:** Este é um altcoin. Alavancagem >3x é arriscada!\n\n" if is_altcoin else "")
+        + "💡 Exemplos: 1x 2x 3x 10x 20x\n"
+        "⚠️ Maior alavancagem = maior risco de liquidação por volatilidade",
         reply_markup=KeyboardBuilder.futures_leverage_selection(is_altcoin),
         parse_mode=ParseMode.MARKDOWN
     )
 
 
 async def handle_futures_leverage(query, context: ContextTypes.DEFAULT_TYPE, leverage: int):
-    """Handle futures leverage selection."""
+    """Handle futures leverage selection - Step 4."""
+    from src.utils.formatters import format_us_price, MessageFormatter
+    
     if 'futures_trade' not in context.user_data:
         await query.edit_message_text(
             "❌ Sessão expirada. Inicie novamente.",
@@ -2205,32 +2231,194 @@ async def handle_futures_leverage(query, context: ContextTypes.DEFAULT_TYPE, lev
         return
     
     context.user_data['futures_trade']['leverage'] = leverage
+    context.user_data['futures_trade']['step'] = 4
     is_altcoin = context.user_data['futures_trade'].get('is_altcoin', False)
+    trade = context.user_data['futures_trade']
     
-    # Show risk warning if needed
-    if (leverage > 3 and is_altcoin) or leverage >= 10:
-        pair = context.user_data['futures_trade'].get('pair', '???')
-        symbol = pair.replace('USDT', '')
-        
-        await query.edit_message_text(
-            MessageFormatter.futures_risk_warning(leverage, is_altcoin, symbol),
-            reply_markup=InlineKeyboardMarkup([
-                [InlineKeyboardButton("⚠️ Entendi, Continuar", callback_data="futures_continue_risk")],
-                [InlineKeyboardButton("🔙 Voltar", callback_data="futures_menu")]
-            ]),
-            parse_mode=ParseMode.MARKDOWN
+    # Risk warning based on leverage
+    risk_warning = ""
+    if leverage >= 20:
+        risk_warning = (
+            "\n💀 **RISCO EXTREMO!**\n"
+            f"Com {leverage}x, você será liquidado em ~{100/leverage:.1f}% de movimento contra.\n"
+            "⚠️ Volatilidade do mercado cripto pode facilmente atingir isso!\n\n"
         )
-        context.user_data['awaiting_futures_entry'] = True
-        return
+    elif leverage >= 10:
+        risk_warning = (
+            f"\n⚠️ **Atenção:** Com {leverage}x, pequenos movimentos têm grande impacto.\n"
+            f"Liquidação em aproximadamente {100/leverage:.1f}% de movimento contra.\n\n"
+        )
+    elif leverage > 3 and is_altcoin:
+        risk_warning = (
+            f"\n⚠️ **Atenção:** Altcoin com {leverage}x é arriscado!\n"
+            "Altcoins têm maior volatilidade que BTC/ETH.\n\n"
+        )
     
-    # Proceed to ask for entry price
-    context.user_data['awaiting_futures_entry'] = True
-    pair = context.user_data['futures_trade'].get('pair', '???')
+    step_summary = MessageFormatter.futures_registration_step(4, trade)
+    
+    # Proceed to ask for stop loss
+    context.user_data['awaiting_futures_stop_loss'] = True
     
     await query.edit_message_text(
-        f"📝 **Trade: {pair}** {leverage}x\n\n"
-        "Digite o **preço de entrada** em USD:\n\n"
-        "Exemplo: `65000` ou `0.5432`",
+        step_summary + "\n\n"
+        f"{risk_warning}"
+        "━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
+        f"✅ **Etapa 4/8 concluída!**\n\n"
+        "📝 **Etapa 5/8 - Stop Loss**\n\n"
+        "Digite o **preço do Stop Loss**:\n\n"
+        f"💡 Preço de entrada: U$ {format_us_price(trade.get('entry_price', 0))}\n\n"
+        "_O cálculo de % será feito automaticamente._",
+        reply_markup=KeyboardBuilder.cancel_action(),
+        parse_mode=ParseMode.MARKDOWN
+    )
+
+
+async def handle_futures_custom_leverage(query, context: ContextTypes.DEFAULT_TYPE):
+    """Handle custom leverage input request."""
+    from src.utils.formatters import MessageFormatter
+    
+    if 'futures_trade' not in context.user_data:
+        await query.edit_message_text(
+            "❌ Sessão expirada. Inicie novamente.",
+            reply_markup=KeyboardBuilder.futures_menu()
+        )
+        return
+    
+    context.user_data['awaiting_futures_custom_leverage'] = True
+    
+    await query.edit_message_text(
+        "📝 **Alavancagem Personalizada**\n\n"
+        "Digite o valor de alavancagem desejado (1 a 125):\n\n"
+        "Exemplos: `5`, `7`, `15`, `50x`\n\n"
+        "⚠️ **Atenção aos riscos:**\n"
+        "• 10x = liquidação em ~10% contra\n"
+        "• 20x = liquidação em ~5% contra\n"
+        "• 50x = liquidação em ~2% contra\n"
+        "• 100x = liquidação em ~1% contra",
+        reply_markup=KeyboardBuilder.cancel_action(),
+        parse_mode=ParseMode.MARKDOWN
+    )
+
+
+async def handle_futures_leverage_info(query):
+    """Handle leverage info button."""
+    await query.edit_message_text(
+        "ℹ️ **INFORMAÇÕES SOBRE ALAVANCAGEM**\n\n"
+        "**O que é alavancagem?**\n"
+        "Multiplicador do seu capital. Com 10x, $100 controla $1000.\n\n"
+        "**Riscos por alavancagem:**\n"
+        "• 1x-3x: Conservador ✅\n"
+        "• 5x: Moderado ⚠️\n"
+        "• 10x: Agressivo 🔴\n"
+        "• 20x+: Extremamente arriscado 💀\n\n"
+        "**Liquidação aproximada:**\n"
+        "• 3x = movimento de ~33% contra\n"
+        "• 5x = movimento de ~20% contra\n"
+        "• 10x = movimento de ~10% contra\n"
+        "• 20x = movimento de ~5% contra\n\n"
+        "**Recomendação:**\n"
+        "• Altcoins: máximo 3x\n"
+        "• BTC/ETH: máximo 10x\n"
+        "• Sempre use stop loss!",
+        reply_markup=KeyboardBuilder.futures_leverage_selection(False),
+        parse_mode=ParseMode.MARKDOWN
+    )
+
+
+async def handle_futures_timeframe_selection(query, context: ContextTypes.DEFAULT_TYPE, timeframe: str):
+    """Handle timeframe button selection."""
+    from src.utils.formatters import format_us_price, MessageFormatter
+    
+    if 'futures_trade' not in context.user_data:
+        await query.edit_message_text(
+            "❌ Sessão expirada. Inicie novamente.",
+            reply_markup=KeyboardBuilder.futures_menu()
+        )
+        return
+    
+    context.user_data['futures_trade']['timeframe'] = timeframe
+    context.user_data['futures_trade']['step'] = 7
+    
+    trade = context.user_data['futures_trade']
+    pair = trade.get('pair', '???')
+    side = trade.get('side', 'long')
+    
+    await query.edit_message_text(
+        f"✅ **Timeframe:** {timeframe.upper()}\n\n"
+        f"🔍 **Deseja verificar zonas de suporte/resistência?**\n\n"
+        f"Com base no timeframe {timeframe.upper()}, o bot pode sugerir:\n"
+        f"• {'Resistências e zonas de stop (SHORT)' if side == 'short' else 'Suportes e zonas de stop (LONG)'}\n"
+        f"• Ajustes no stop loss baseados em zonas técnicas\n\n"
+        f"Isso ajuda a posicionar o stop em zonas mais seguras.",
+        reply_markup=KeyboardBuilder.futures_zone_check(),
+        parse_mode=ParseMode.MARKDOWN
+    )
+
+
+async def handle_futures_done_targets(query, context: ContextTypes.DEFAULT_TYPE):
+    """Handle done targets button - proceed to timeframe selection."""
+    from src.utils.formatters import format_us_price, MessageFormatter
+    
+    if 'futures_trade' not in context.user_data:
+        await query.edit_message_text(
+            "❌ Sessão expirada. Inicie novamente.",
+            reply_markup=KeyboardBuilder.futures_menu()
+        )
+        return
+    
+    trade = context.user_data['futures_trade']
+    trade['step'] = 6
+    context.user_data.pop('awaiting_futures_targets', None)
+    
+    targets = trade.get('targets', [])
+    targets_summary = ""
+    for i, t in enumerate(targets, 1):
+        entry_price = trade.get('entry_price', 0)
+        side = trade.get('side', 'long')
+        profit_pct = ((t['price'] - entry_price) / entry_price * 100) if entry_price > 0 else 0
+        if side == 'short':
+            profit_pct = -profit_pct
+        targets_summary += f"   🎯 Alvo {i}: U$ {format_us_price(t['price'])} > {t['percent']:.0f}% (Lucro {profit_pct:.1f}%)\n"
+    
+    await query.edit_message_text(
+        "✅ **Alvos de venda configurados:**\n"
+        f"{targets_summary}\n"
+        "━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
+        f"✅ **Etapa 6/8 concluída!**\n\n"
+        "📝 **Etapa 7/8 - Timeframe**\n\n"
+        "Qual **timeframe** você usou para analisar a operação?\n"
+        "_Isso ajuda a identificar suportes e resistências_",
+        reply_markup=KeyboardBuilder.futures_timeframe_selection(),
+        parse_mode=ParseMode.MARKDOWN
+    )
+
+
+async def handle_futures_add_target(query, context: ContextTypes.DEFAULT_TYPE):
+    """Handle add another target button."""
+    from src.utils.formatters import format_us_price
+    
+    if 'futures_trade' not in context.user_data:
+        await query.edit_message_text(
+            "❌ Sessão expirada. Inicie novamente.",
+            reply_markup=KeyboardBuilder.futures_menu()
+        )
+        return
+    
+    trade = context.user_data['futures_trade']
+    targets = trade.get('targets', [])
+    total_percent = sum(t.get('percent', 0) for t in targets)
+    remaining = 100 - total_percent
+    target_num = len(targets) + 1
+    
+    context.user_data['awaiting_futures_targets'] = True
+    trade['target_count'] = target_num
+    
+    await query.edit_message_text(
+        f"📝 **Adicionar Alvo {target_num}**\n\n"
+        f"📊 Já configurado: {total_percent:.0f}% | Restante: {remaining:.0f}%\n\n"
+        "Digite o próximo alvo no formato:\n"
+        "`preço percentual`\n\n"
+        "Exemplo: `104,000.00 25` (vender 25% a U$ 104,000.00)",
         reply_markup=KeyboardBuilder.cancel_action(),
         parse_mode=ParseMode.MARKDOWN
     )
@@ -3178,61 +3366,74 @@ async def handle_futures_use_stop(query, context: ContextTypes.DEFAULT_TYPE, sto
 
 
 async def show_futures_final_confirmation(query, context: ContextTypes.DEFAULT_TYPE):
-    """Show final confirmation before creating the trade."""
+    """Show final confirmation before creating the trade with full summary."""
     from src.services.risk_management import risk_service
+    from src.utils.formatters import MessageFormatter
     
     trade = context.user_data.get('futures_trade', {})
     pair = trade.get('pair', '???')
     side = trade.get('side', 'long')
     leverage = trade.get('leverage', 1)
     entry_price = trade.get('entry_price', 0)
-    stop_price = trade.get('stop_price', 0)
+    stop_price = trade.get('stop_loss', trade.get('stop_price', 0))
     stop_percent = trade.get('stop_percent', 0)
     risk_usd = trade.get('risk_usd', 0)
-    timeframe = trade.get('timeframe', '?')
+    timeframe = trade.get('timeframe', '4h')
     zone_used = trade.get('zone_used', 'management')
     futures_balance = trade.get('futures_balance', 0)
     is_altcoin = trade.get('is_altcoin', False)
+    risk_percent = trade.get('risk_percent', 5.0)
+    open_risk = trade.get('open_risk', 0)
     
-    # Calculate position size
-    quantity, margin, position_value = risk_service.calculate_position_size(
-        futures_balance=futures_balance,
-        risk_percent=trade.get('risk_percent', 5.0),
-        entry_price=entry_price,
-        stop_price=stop_price,
-        leverage=leverage
-    )
+    # Calculate position size if not already done
+    if not trade.get('margin'):
+        quantity, margin, position_value = risk_service.calculate_position_size(
+            futures_balance=futures_balance,
+            risk_percent=risk_percent,
+            entry_price=entry_price,
+            stop_price=stop_price,
+            leverage=leverage
+        )
+        
+        context.user_data['futures_trade']['quantity'] = quantity
+        context.user_data['futures_trade']['margin'] = margin
+        context.user_data['futures_trade']['position_value'] = position_value
+    else:
+        margin = trade.get('margin', 0)
+        quantity = trade.get('quantity', 0)
+        position_value = margin * leverage
     
-    context.user_data['futures_trade']['quantity'] = quantity
-    context.user_data['futures_trade']['margin'] = margin
-    context.user_data['futures_trade']['position_value'] = position_value
+    # Prepare trade data for full summary
+    trade_data = {
+        'pair': pair,
+        'entry_price': entry_price,
+        'side': side,
+        'leverage': leverage,
+        'stop_loss': stop_price,
+        'stop_percent': stop_percent,
+        'margin': margin,
+        'quantity': quantity,
+        'timeframe': timeframe,
+        'futures_balance': futures_balance,
+        'risk_percent': risk_percent,
+        'risk_usd': risk_usd,
+        'open_risk': open_risk,
+        'target_1': trade.get('target_1', {}),
+        'target_2': trade.get('target_2', {}),
+        'target_3': trade.get('target_3', {}),
+    }
     
-    direction_emoji = "🟢 LONG" if side == "long" else "🔴 SHORT"
-    zone_emoji = "📊" if zone_used == "management" else "🔍"
-    zone_text = "Gerenciamento" if zone_used == "management" else "Zona de Liquidez"
+    current_price = trade.get('current_price', entry_price)
+    
+    # Generate full summary
+    full_summary = MessageFormatter.futures_full_trade_summary(trade_data, current_price)
     
     show_risk_warning = (leverage > 3 and is_altcoin) or leverage >= 10
     
-    msg = (
-        f"📋 **Confirmação Final do Trade**\n\n"
-        f"🪙 **{pair}** | {direction_emoji} | {leverage}x\n\n"
-        f"━━━━━━━━━━━━━━━━━━━━━\n\n"
-        f"📥 **Entry:** ${entry_price:,.4f}\n"
-        f"🛑 **Stop Loss:** ${stop_price:,.2f} ({stop_percent:.2f}%)\n"
-        f"📊 **Timeframe:** {timeframe.upper()}\n"
-        f"{zone_emoji} **Stop baseado em:** {zone_text}\n\n"
-        f"━━━━━━━━━━━━━━━━━━━━━\n\n"
-        f"💰 **Margem:** ${margin:,.2f}\n"
-        f"📦 **Quantidade:** {quantity:,.6f}\n"
-        f"📊 **Valor Posição:** ${position_value:,.2f}\n"
-        f"⚠️ **Risco:** ${risk_usd:,.2f}\n\n"
-    )
-    
-    if show_risk_warning:
-        msg += f"⚠️ **ATENÇÃO: Trade de alto risco!**\n\n"
-    
     await query.edit_message_text(
-        msg,
+        full_summary + "\n\n"
+        "━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
+        "**Confirma o cadastro deste trade?**",
         reply_markup=KeyboardBuilder.futures_final_confirm(show_risk_warning),
         parse_mode=ParseMode.MARKDOWN
     )
@@ -3240,6 +3441,8 @@ async def show_futures_final_confirmation(query, context: ContextTypes.DEFAULT_T
 
 async def handle_futures_final_confirm(query, context: ContextTypes.DEFAULT_TYPE):
     """Create the futures trade after final confirmation."""
+    from src.utils.formatters import format_us_price
+    
     user = query.from_user
     trade = context.user_data.get('futures_trade', {})
     
@@ -3249,7 +3452,17 @@ async def handle_futures_final_confirm(query, context: ContextTypes.DEFAULT_TYPE
         
         db_user = await user_repo.get_by_telegram_id(user.id)
         
-        # Create trade with risk management data
+        # Get targets
+        target_1 = trade.get('target_1', {})
+        target_2 = trade.get('target_2', {})
+        target_3 = trade.get('target_3', {})
+        
+        # Calculate allocation percent
+        futures_balance = trade.get('futures_balance', 0)
+        margin = trade.get('margin', 0)
+        allocation_percent = (margin / futures_balance * 100) if futures_balance > 0 else 0
+        
+        # Create trade with risk management data and targets
         new_trade = await futures_repo.create_with_risk(
             user_id=db_user.id,
             pair=trade.get('pair'),
@@ -3258,11 +3471,18 @@ async def handle_futures_final_confirm(query, context: ContextTypes.DEFAULT_TYPE
             entry_price=trade.get('entry_price'),
             quantity=trade.get('quantity'),
             margin=trade.get('margin'),
-            stop_loss=trade.get('stop_price'),
+            stop_loss=trade.get('stop_loss', trade.get('stop_price')),
             stop_percent=trade.get('stop_percent'),
             risk_usd=trade.get('risk_usd'),
             timeframe=trade.get('timeframe'),
-            zone_used=trade.get('zone_used', 'management')
+            zone_used=trade.get('zone_used', 'management'),
+            target_1_price=target_1.get('price') if target_1 else None,
+            target_1_percent=target_1.get('percent') if target_1 else None,
+            target_2_price=target_2.get('price') if target_2 else None,
+            target_2_percent=target_2.get('percent') if target_2 else None,
+            target_3_price=target_3.get('price') if target_3 else None,
+            target_3_percent=target_3.get('percent') if target_3 else None,
+            allocation_percent=allocation_percent
         )
         
         await session.commit()
@@ -3272,13 +3492,24 @@ async def handle_futures_final_confirm(query, context: ContextTypes.DEFAULT_TYPE
     
     direction_emoji = "🟢 LONG" if trade.get('side') == "long" else "🔴 SHORT"
     
+    # Build targets summary
+    targets_text = ""
+    if target_1:
+        targets_text += f"🎯 Alvo 1: U$ {format_us_price(target_1.get('price', 0))} ({target_1.get('percent', 0):.0f}%)\n"
+    if target_2:
+        targets_text += f"🎯 Alvo 2: U$ {format_us_price(target_2.get('price', 0))} ({target_2.get('percent', 0):.0f}%)\n"
+    if target_3:
+        targets_text += f"🎯 Alvo 3: U$ {format_us_price(target_3.get('price', 0))} ({target_3.get('percent', 0):.0f}%)\n"
+    
     await query.edit_message_text(
         f"✅ **Trade Cadastrado com Sucesso!**\n\n"
         f"🪙 **{trade.get('pair')}** | {direction_emoji} | {trade.get('leverage')}x\n\n"
-        f"📥 Entry: ${trade.get('entry_price'):,.4f}\n"
-        f"🛑 Stop: ${trade.get('stop_price'):,.2f}\n"
-        f"⚠️ Risco: ${trade.get('risk_usd'):,.2f}\n\n"
-        f"📊 Timeframe: {trade.get('timeframe', '?').upper()}\n\n"
+        f"📥 Entry: U$ {format_us_price(trade.get('entry_price', 0))}\n"
+        f"🛑 Stop: U$ {format_us_price(trade.get('stop_loss', trade.get('stop_price', 0)))} ({trade.get('stop_percent', 0):.2f}%)\n"
+        f"⚠️ Risco: U$ {format_us_price(trade.get('risk_usd', 0))}\n\n"
+        f"{targets_text}"
+        f"📊 Timeframe: {trade.get('timeframe', '4h').upper()}\n"
+        f"➡️ Alocação: {allocation_percent:.2f}%\n\n"
         f"Use o menu de Futuros para acompanhar.",
         reply_markup=KeyboardBuilder.futures_menu(),
         parse_mode=ParseMode.MARKDOWN

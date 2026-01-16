@@ -340,10 +340,16 @@ class KeyboardBuilder:
             [InlineKeyboardButton("❌ Cancelar", callback_data="futures_menu")],
         ]
         return InlineKeyboardMarkup(keyboard)
+    
+    # Alias for backwards compatibility
+    @staticmethod
+    def futures_direction_selection() -> InlineKeyboardMarkup:
+        """Alias for futures_side_selection."""
+        return KeyboardBuilder.futures_side_selection()
 
     @staticmethod
     def futures_leverage_selection(is_altcoin: bool = False) -> InlineKeyboardMarkup:
-        """Create keyboard for selecting leverage."""
+        """Create keyboard for selecting leverage with risk info."""
         keyboard = [
             [
                 InlineKeyboardButton("1x", callback_data="futures_lev_1"),
@@ -355,6 +361,7 @@ class KeyboardBuilder:
                 InlineKeyboardButton("10x 🔴", callback_data="futures_lev_10"),
                 InlineKeyboardButton("20x 💀", callback_data="futures_lev_20"),
             ],
+            [InlineKeyboardButton("✏️ Outro valor", callback_data="futures_lev_custom")],
         ]
         
         if is_altcoin:
@@ -362,6 +369,44 @@ class KeyboardBuilder:
                 InlineKeyboardButton("⚠️ AVISO: Altcoin (>3x = Alto Risco)", callback_data="futures_risk_info")
             ])
         
+        keyboard.append([
+            InlineKeyboardButton("ℹ️ Sobre riscos de alavancagem", callback_data="futures_leverage_info")
+        ])
+        keyboard.append([InlineKeyboardButton("❌ Cancelar", callback_data="futures_menu")])
+        return InlineKeyboardMarkup(keyboard)
+
+    @staticmethod
+    def futures_timeframe_selection() -> InlineKeyboardMarkup:
+        """Create keyboard for selecting analysis timeframe."""
+        keyboard = [
+            [
+                InlineKeyboardButton("15m", callback_data="futures_tf_15m"),
+                InlineKeyboardButton("30m", callback_data="futures_tf_30m"),
+                InlineKeyboardButton("1h", callback_data="futures_tf_1h"),
+            ],
+            [
+                InlineKeyboardButton("4h ⭐", callback_data="futures_tf_4h"),
+                InlineKeyboardButton("1d ⭐", callback_data="futures_tf_1d"),
+                InlineKeyboardButton("1w", callback_data="futures_tf_1w"),
+            ],
+            [InlineKeyboardButton("❌ Cancelar", callback_data="futures_menu")],
+        ]
+        return InlineKeyboardMarkup(keyboard)
+
+    @staticmethod
+    def futures_targets_options(target_count: int = 0) -> InlineKeyboardMarkup:
+        """Create keyboard for targets configuration.
+        
+        Args:
+            target_count: Number of targets already added (optional)
+        """
+        keyboard = []
+        
+        # Only show add button if less than 3 targets
+        if target_count < 3:
+            keyboard.append([InlineKeyboardButton("➕ Adicionar mais um alvo", callback_data="futures_add_target")])
+        
+        keyboard.append([InlineKeyboardButton("✅ Concluir alvos", callback_data="futures_done_targets")])
         keyboard.append([InlineKeyboardButton("❌ Cancelar", callback_data="futures_menu")])
         return InlineKeyboardMarkup(keyboard)
 

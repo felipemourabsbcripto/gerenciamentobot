@@ -1,8 +1,56 @@
 """
 Message formatters for the bot.
 """
+from datetime import datetime
 from typing import List, Optional
 from src.models import Asset, Alert, FuturesTrade
+
+
+def parse_us_number(value: str) -> float:
+    """
+    Parse number in US format (comma for thousands, dot for decimals).
+    Examples: 95,699.90 -> 95699.90 | 1,234,567.89 -> 1234567.89
+    Also handles Brazilian format: 95.699,90 -> 95699.90
+    """
+    value = value.strip().replace('$', '').replace('U$', '').replace(' ', '')
+    
+    # Detectar formato brasileiro (ponto como separador de milhares)
+    if ',' in value and '.' in value:
+        # Se vírgula vem depois do ponto, é formato US (1,234.56)
+        if value.rfind('.') > value.rfind(','):
+            value = value.replace(',', '')
+        else:
+            # Formato BR (1.234,56) -> converter para US
+            value = value.replace('.', '').replace(',', '.')
+    elif ',' in value and '.' not in value:
+        # Pode ser formato BR (1234,56) ou US (1,234)
+        # Se tem exatamente 2 dígitos após a vírgula, é BR
+        parts = value.split(',')
+        if len(parts) == 2 and len(parts[1]) == 2:
+            value = value.replace(',', '.')
+        else:
+            value = value.replace(',', '')
+    
+    return float(value)
+
+
+def format_us_price(value: float) -> str:
+    """Format price in US format (comma for thousands, dot for decimals)."""
+    if value is None or value == 0:
+        return "0.00"
+    
+    abs_value = abs(value)
+    
+    if abs_value >= 1000:
+        return f"{value:,.2f}"
+    elif abs_value >= 1:
+        return f"{value:,.2f}"
+    elif abs_value >= 0.01:
+        return f"{value:,.4f}"
+    elif abs_value >= 0.0001:
+        return f"{value:,.6f}"
+    else:
+        return f"{value:,.8f}"
 
 
 def format_price(value: float) -> str:
@@ -640,3 +688,200 @@ class MessageFormatter:
             f"{pnl_emoji} **P/L Final:** ${pnl:+,.2f} ({pnl_pct:+.2f}%)\n"
             f"📅 **Fechado em:** {trade.closed_at.strftime('%d/%m/%Y %H:%M') if trade.closed_at else 'N/A'}"
         )
+
+    @staticmethod
+    def futures_full_trade_summary(trade_data: dict, current_price: float = None) -> str:
+        """
+        Format complete futures trade summary with all registration steps visible.
+        
+        Follows the format:
+        - Par selecionado
+        - Valor de entrada
+        - Long/Short
+        - Alavancagem
+        - Stop Loss
+        - Alvos de venda
+        - Timeframe
+        - Cálculo de risco
+        """
+        now = datetime.now()
+        pair = trade_data.get('pair', '???')
+        entry_price = trade_data.get('entry_price', 0)
+        side = trade_data.get('side', 'long')
+        leverage = trade_data.get('leverage', 1)
+        stop_loss = trade_data.get('stop_loss', 0)
+        stop_percent = trade_data.get('stop_percent', 0)
+        margin = trade_data.get('margin', 0)
+        quantity = trade_data.get('quantity', 0)
+        timeframe = trade_data.get('timeframe', '4h')
+        futures_balance = trade_data.get('futures_balance', 0)
+        risk_percent = trade_data.get('risk_percent', 5.0)
+        risk_usd = trade_data.get('risk_usd', 0)
+        open_risk = trade_data.get('open_risk', 0)
+        
+        # Targets
+        target_1 = trade_data.get('target_1', {})
+        target_2 = trade_data.get('target_2', {})
+        target_3 = trade_data.get('target_3', {})
+        
+        # Calculate values
+        position_value = margin * leverage
+        allocation_percent = (margin / futures_balance * 100) if futures_balance > 0 else 0
+        max_risk = futures_balance * (risk_percent / 100)
+        available_risk = max_risk - open_risk - risk_usd
+        
+        side_emoji = "🟢 LONG" if side == "long" else "🔴 SHORT"
+        side_text = "LONG" if side == "long" else "SHORT"
+        
+        # Current price
+        price_display = current_price if current_price else entry_price
+        
+        # Leverage warning
+        lev_warning = ""
+        if leverage >= 20:
+            lev_warning = "💀 RISCO EXTREMO"
+        elif leverage >= 10:
+            lev_warning = "⚠️ Risco Alto"
+        elif leverage >= 5:
+            lev_warning = "⚠️ Atenção à volatilidade"
+        
+        lines = [
+            f"📋 **RESUMO DO TRADE**\n",
+            f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n",
+            f"📝 **1. Par selecionado:** {pair}",
+            f"💵 **2. Preço de entrada:** U$ {format_us_price(entry_price)}",
+            f"{side_emoji} **3. Direção:** {side_text}",
+            f"⚡ **4. Alavancagem:** {leverage}x {lev_warning}",
+            f"🛑 **5. Stop Loss:** U$ {format_us_price(stop_loss)} ({stop_percent:.2f}%)",
+        ]
+        
+        # Targets
+        lines.append(f"\n🎯 **6. Alvos de Venda:**")
+        if target_1:
+            t1_profit = ((target_1.get('price', 0) - entry_price) / entry_price * 100) if entry_price > 0 else 0
+            if side == 'short':
+                t1_profit = -t1_profit
+            lines.append(f"   🔜 1º Alvo: U$ {format_us_price(target_1.get('price', 0))} > {target_1.get('percent', 0):.0f}% (Lucro {t1_profit:.1f}%)")
+        if target_2:
+            t2_profit = ((target_2.get('price', 0) - entry_price) / entry_price * 100) if entry_price > 0 else 0
+            if side == 'short':
+                t2_profit = -t2_profit
+            lines.append(f"   🔜 2º Alvo: U$ {format_us_price(target_2.get('price', 0))} > {target_2.get('percent', 0):.0f}% (Lucro {t2_profit:.1f}%)")
+        if target_3:
+            t3_profit = ((target_3.get('price', 0) - entry_price) / entry_price * 100) if entry_price > 0 else 0
+            if side == 'short':
+                t3_profit = -t3_profit
+            lines.append(f"   🔜 3º Alvo: U$ {format_us_price(target_3.get('price', 0))} > {target_3.get('percent', 0):.0f}% (Lucro {t3_profit:.1f}%)")
+        
+        lines.append(f"\n📊 **7. Timeframe:** {timeframe.upper()}")
+        
+        lines.append(f"\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
+        lines.append(f"\n💰 **Preço atual:** U$ {format_us_price(price_display)}")
+        lines.append(f"⏰ **Cadastrado em:** {now.strftime('%d/%m/%Y às %H:%M:%S')}")
+        
+        lines.append(f"\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
+        lines.append(f"\n💲 **Preço atual:** U$ {format_us_price(price_display)}")
+        lines.append(f"⌚ **Atualizado em:** {now.strftime('%d/%m/%Y às %H:%M:%S')}")
+        
+        lines.append(f"\n➡️ **Preço para compra:** U$ {format_us_price(entry_price)}")
+        lines.append(f"➡️ **Alocação de patrimônio:** {allocation_percent:.2f}%")
+        lines.append(f"➡️ **Alavancagem:** {leverage}x")
+        
+        lines.append(f"\n🎯 **Bons alvos de venda:**")
+        if target_1:
+            t1_profit = ((target_1.get('price', 0) - entry_price) / entry_price * 100 * leverage) if entry_price > 0 else 0
+            if side == 'short':
+                t1_profit = -t1_profit
+            lines.append(f"🔜 1ª Zona de venda: U$ {format_us_price(target_1.get('price', 0))} - Vender {target_1.get('percent', 0):.0f}% (Lucro {t1_profit:.1f}%)")
+        if target_2:
+            t2_profit = ((target_2.get('price', 0) - entry_price) / entry_price * 100 * leverage) if entry_price > 0 else 0
+            if side == 'short':
+                t2_profit = -t2_profit
+            lines.append(f"🔜 2ª Zona de venda: U$ {format_us_price(target_2.get('price', 0))} - Vender {target_2.get('percent', 0):.0f}% (Lucro {t2_profit:.1f}%)")
+        if target_3:
+            t3_profit = ((target_3.get('price', 0) - entry_price) / entry_price * 100 * leverage) if entry_price > 0 else 0
+            if side == 'short':
+                t3_profit = -t3_profit
+            lines.append(f"🔜 3ª Zona de venda: U$ {format_us_price(target_3.get('price', 0))} - Vender {target_3.get('percent', 0):.0f}% (Lucro {t3_profit:.1f}%)")
+        
+        lines.append(f"\n🛑️ **Stoploss:** U$ {format_us_price(stop_loss)} (-{stop_percent:.2f}%)")
+        lines.append(f"💰 **Carteira de Futuros:** U$ {format_us_price(futures_balance)}")
+        lines.append(f"⚙️ **Risco configurado:** {risk_percent:.1f}% da carteira de futuros")
+        lines.append(f"💵 **Risco máximo:** U$ {format_us_price(max_risk)}")
+        lines.append(f"🔒 **Risco em uso:** U$ {format_us_price(open_risk + risk_usd)}")
+        lines.append(f"✅ **Risco Disponível:** U$ {format_us_price(available_risk)}")
+        
+        return "\n".join(lines)
+
+    @staticmethod
+    def futures_registration_step(step: int, trade_data: dict) -> str:
+        """Format current registration step with all previous steps visible."""
+        pair = trade_data.get('pair', '???')
+        entry_price = trade_data.get('entry_price', 0)
+        side = trade_data.get('side', '')
+        leverage = trade_data.get('leverage', 0)
+        stop_loss = trade_data.get('stop_loss', 0)
+        stop_percent = trade_data.get('stop_percent', 0)
+        margin = trade_data.get('margin', 0)
+        current_price = trade_data.get('current_price', 0)
+        futures_balance = trade_data.get('futures_balance', 0)
+        
+        side_emoji = "🟢 LONG" if side == "long" else "🔴 SHORT" if side else "❓"
+        
+        lines = [
+            f"📋 **CADASTRO DE TRADE FUTUROS**\n",
+            f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n",
+        ]
+        
+        # Show completed steps
+        if pair:
+            lines.append(f"✅ 1. Par: **{pair}**")
+        else:
+            lines.append(f"⏳ 1. Par: _aguardando..._")
+        
+        if entry_price > 0:
+            lines.append(f"✅ 2. Entrada: **U$ {format_us_price(entry_price)}**")
+        elif step >= 2:
+            lines.append(f"⏳ 2. Entrada: _aguardando..._")
+        
+        if side:
+            lines.append(f"✅ 3. Direção: **{side_emoji}**")
+        elif step >= 3:
+            lines.append(f"⏳ 3. Direção: _aguardando..._")
+        
+        if leverage > 0:
+            lines.append(f"✅ 4. Alavancagem: **{leverage}x**")
+        elif step >= 4:
+            lines.append(f"⏳ 4. Alavancagem: _aguardando..._")
+        
+        if stop_loss > 0:
+            lines.append(f"✅ 5. Stop Loss: **U$ {format_us_price(stop_loss)}** ({stop_percent:.2f}%)")
+        elif step >= 5:
+            lines.append(f"⏳ 5. Stop Loss: _aguardando..._")
+        
+        if step >= 6:
+            targets = trade_data.get('targets', [])
+            if targets:
+                lines.append(f"✅ 6. Alvos de venda: **{len(targets)} alvos**")
+            else:
+                lines.append(f"⏳ 6. Alvos de venda: _aguardando..._")
+        
+        if step >= 7:
+            timeframe = trade_data.get('timeframe', '')
+            if timeframe:
+                lines.append(f"✅ 7. Timeframe: **{timeframe.upper()}**")
+            else:
+                lines.append(f"⏳ 7. Timeframe: _aguardando..._")
+        
+        if step >= 8:
+            lines.append(f"⏳ 8. Cálculo de risco: _processando..._")
+        
+        # Show current price
+        if current_price > 0:
+            lines.append(f"\n💰 **Preço atual:** U$ {format_us_price(current_price)}")
+        
+        # Show balance info
+        if futures_balance > 0:
+            lines.append(f"💼 **Carteira Futuros:** U$ {format_us_price(futures_balance)}")
+        
+        return "\n".join(lines)

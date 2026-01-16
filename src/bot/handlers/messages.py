@@ -63,11 +63,17 @@ async def message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     elif context.user_data.get('awaiting_futures_entry'):
         await handle_futures_entry_input(update, context, text)
         return
+    elif context.user_data.get('awaiting_futures_stop_loss'):
+        await handle_futures_stop_loss_input(update, context, text)
+        return
+    elif context.user_data.get('awaiting_futures_targets'):
+        await handle_futures_targets_input(update, context, text)
+        return
+    elif context.user_data.get('awaiting_futures_custom_leverage'):
+        await handle_futures_custom_leverage_input(update, context, text)
+        return
     elif context.user_data.get('awaiting_futures_stop_percent'):
         await handle_futures_stop_percent_input(update, context, text)
-        return
-    elif context.user_data.get('awaiting_futures_margin_for_risk'):
-        await handle_futures_margin_for_risk_input(update, context, text)
         return
     elif context.user_data.get('awaiting_futures_timeframe'):
         await handle_futures_timeframe_input(update, context, text)
@@ -823,29 +829,40 @@ async def handle_reserve_target_input(update: Update, context: ContextTypes.DEFA
 # ==================== FUTURES MESSAGE HANDLERS ====================
 
 async def handle_futures_pair_input(update: Update, context: ContextTypes.DEFAULT_TYPE, text: str):
-    """Handle futures pair symbol input - Step 1 of new trade flow."""
+    """
+    Handle futures pair symbol input - Step 1 of new trade flow.
+    Accepts formats: BTC/USDT, BTCUSDT, BTC, BTC.P, USDT.P, TOTAL, etc.
+    """
+    from src.utils.formatters import format_us_price, parse_us_number, MessageFormatter
     from src.services.risk_management import risk_service
     
-    pair_input = text.upper().strip().replace("/", "").replace("-", "")
+    pair_input = text.strip()
     user = update.effective_user
+    
+    # Allow flexible pair formats: BTC/USDT, BTCUSDT, BTC, BTC.P, TOTAL, etc.
+    # Normalize: keep original format for display, clean for processing
+    display_pair = pair_input.upper()
+    
+    # Clean pair for price lookup
+    clean_pair = pair_input.upper().replace("/", "").replace("-", "").replace(".P", "").replace(".p", "")
     
     # Check if user provided full pair or just base symbol
     quote_currencies = ["USDT", "USDC", "USD", "BTC", "ETH", "BNB", "BUSD"]
     
-    has_quote = any(pair_input.endswith(q) for q in quote_currencies)
+    has_quote = any(clean_pair.endswith(q) for q in quote_currencies)
     
     if has_quote:
-        pair = pair_input
+        pair = clean_pair
         for q in quote_currencies:
-            if pair_input.endswith(q):
-                symbol = pair_input[:-len(q)]
+            if clean_pair.endswith(q):
+                symbol = clean_pair[:-len(q)]
                 break
     else:
-        symbol = pair_input
+        symbol = clean_pair
         pair = f"{symbol}USDT"
     
     # Check if it's a valid symbol using TradingView
-    await update.message.reply_text("🔍 Verificando par e analisando gerenciamento de risco...")
+    await update.message.reply_text("🔍 Verificando par e obtendo preço atual...")
     
     tv = TradingViewService()
     try:
@@ -855,9 +872,10 @@ async def handle_futures_pair_input(update: Update, context: ContextTypes.DEFAUL
     
     if not price_data:
         await update.message.reply_text(
-            f"❌ Não foi possível encontrar o par {pair}.\n\n"
+            f"❌ Não foi possível encontrar o par {display_pair}.\n\n"
             "Verifique o símbolo e tente novamente.\n"
-            "Exemplos: `BTCUSDT`, `ETHUSDT`, `SOL`, `DOGE`",
+            "Exemplos: `BTC/USDT`, `ETH/USDT`, `SOL`, `DOGE`\n"
+            "Formatos especiais: `BTC.P`, `USDT.P`, `TOTAL`",
             reply_markup=KeyboardBuilder.cancel_action(),
             parse_mode=ParseMode.MARKDOWN
         )
@@ -878,242 +896,316 @@ async def handle_futures_pair_input(update: Update, context: ContextTypes.DEFAUL
         # Get total open risk
         open_risk = await futures_repo.get_total_open_risk(db_user.id)
     
-    # Store trade data
+    # Calculate available risk
+    max_risk = futures_balance * (risk_percent / 100)
+    available_risk = max_risk - open_risk
+    
+    # Store trade data with step tracking
     context.user_data['futures_trade'] = {
-        'pair': pair,
+        'step': 1,
+        'pair': display_pair if "/" in pair_input else pair,
         'symbol': symbol,
         'is_altcoin': is_altcoin,
         'current_price': current_price,
         'futures_balance': futures_balance,
         'risk_percent': risk_percent,
         'open_risk': open_risk,
-        'user_id': db_user.id
+        'max_risk': max_risk,
+        'available_risk': available_risk,
+        'user_id': db_user.id,
+        'targets': []
     }
     context.user_data.pop('awaiting_futures_pair', None)
     
-    # Calculate available risk
-    max_risk = futures_balance * (risk_percent / 100)
-    available_risk = max_risk - open_risk
+    # Build step summary
+    step_summary = MessageFormatter.futures_registration_step(1, context.user_data['futures_trade'])
     
     altcoin_warning = ""
     if is_altcoin:
-        altcoin_warning = "\n⚠️ **ATENÇÃO:** Este é um altcoin. Alavancagem >3x é arriscada!"
-    
-    balance_msg = ""
-    if futures_balance > 0:
-        balance_msg = (
-            f"\n\n💰 **Carteira de Futuros:** ${futures_balance:,.2f}\n"
-            f"⚙️ **Risco configurado:** {risk_percent}% por trade\n"
-            f"💵 **Risco máximo:** ${max_risk:,.2f}\n"
-            f"🔒 **Risco em uso:** ${open_risk:,.2f}\n"
-            f"✅ **Disponível:** ${available_risk:,.2f}"
-        )
-    else:
-        balance_msg = (
-            f"\n\n⚠️ **Atenção:** Sua carteira de futuros está em $0.\n"
-            f"Configure seu saldo em Configurações > Saldo de Futuros"
-        )
+        altcoin_warning = "\n⚠️ **ATENÇÃO:** Este é um altcoin. Alavancagem >3x é arriscada!\n"
     
     await update.message.reply_text(
-        f"📝 **Par selecionado: {pair}**\n\n"
-        f"💰 Preço atual: ${current_price:,.4f}\n"
+        step_summary + "\n\n"
         f"{altcoin_warning}"
-        f"{balance_msg}\n\n"
-        "Selecione a **direção** do trade:",
-        reply_markup=KeyboardBuilder.futures_side_selection(),
+        "━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
+        f"✅ **Etapa 1/8 concluída!**\n\n"
+        "📝 **Etapa 2/8 - Valor de Entrada**\n\n"
+        f"Digite o **preço de entrada** da operação:\n\n"
+        f"💡 Preço atual: U$ {format_us_price(current_price)}\n\n"
+        "_Formato: 95,699.90 (padrão US)_",
+        reply_markup=KeyboardBuilder.cancel_action(),
         parse_mode=ParseMode.MARKDOWN
     )
+    
+    context.user_data['awaiting_futures_entry'] = True
 
 
 async def handle_futures_entry_input(update: Update, context: ContextTypes.DEFAULT_TYPE, text: str):
-    """Handle futures entry price input - Step 3 of new trade flow."""
-    from src.services.risk_management import risk_service
+    """Handle futures entry price input - Step 2 of new trade flow."""
+    from src.utils.formatters import format_us_price, parse_us_number, MessageFormatter
     
     try:
-        price = float(text.replace(',', '.').replace('$', ''))
+        price = parse_us_number(text)
         if price <= 0:
             raise ValueError()
-    except ValueError:
+    except:
         await update.message.reply_text(
-            "❌ Por favor, insira um número válido.\n\n"
-            "Exemplo: `65000` ou `0.5432`",
+            "❌ Valor inválido.\n\n"
+            "Use o formato: `95,699.90` (vírgula para milhares, ponto para decimais)\n"
+            "Exemplos: `95,699.90` | `1,234.56` | `0.5432`",
             reply_markup=KeyboardBuilder.cancel_action(),
             parse_mode=ParseMode.MARKDOWN
         )
         return
     
     context.user_data['futures_trade']['entry_price'] = price
+    context.user_data['futures_trade']['step'] = 2
     context.user_data.pop('awaiting_futures_entry', None)
     
     trade = context.user_data['futures_trade']
-    pair = trade.get('pair', '???')
+    step_summary = MessageFormatter.futures_registration_step(2, trade)
+    
+    await update.message.reply_text(
+        step_summary + "\n\n"
+        "━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
+        f"✅ **Etapa 2/8 concluída!**\n\n"
+        "📝 **Etapa 3/8 - Direção**\n\n"
+        "A operação será **LONG** (compra/alta) ou **SHORT** (venda/baixa)?",
+        reply_markup=KeyboardBuilder.futures_side_selection(),
+        parse_mode=ParseMode.MARKDOWN
+    )
+
+
+async def handle_futures_custom_leverage_input(update: Update, context: ContextTypes.DEFAULT_TYPE, text: str):
+    """Handle custom leverage input."""
+    from src.utils.formatters import format_us_price, MessageFormatter
+    
+    try:
+        leverage = int(text.replace('x', '').replace('X', '').strip())
+        if leverage < 1 or leverage > 125:
+            raise ValueError()
+    except:
+        await update.message.reply_text(
+            "❌ Valor inválido.\n\n"
+            "Digite um número entre 1 e 125.\n"
+            "Exemplos: `5`, `10x`, `25`",
+            reply_markup=KeyboardBuilder.cancel_action(),
+            parse_mode=ParseMode.MARKDOWN
+        )
+        return
+    
+    context.user_data['futures_trade']['leverage'] = leverage
+    context.user_data['futures_trade']['step'] = 4
+    context.user_data.pop('awaiting_futures_custom_leverage', None)
+    
+    trade = context.user_data['futures_trade']
+    is_altcoin = trade.get('is_altcoin', False)
+    
+    # Risk warning based on leverage
+    risk_warning = ""
+    if leverage >= 20:
+        risk_warning = (
+            "\n💀 **RISCO EXTREMO!**\n"
+            f"Com {leverage}x, você será liquidado em ~{100/leverage:.1f}% de movimento contra.\n"
+            "⚠️ Volatilidade do mercado cripto pode facilmente atingir isso!\n\n"
+        )
+    elif leverage >= 10:
+        risk_warning = (
+            f"\n⚠️ **Atenção:** Com {leverage}x, pequenos movimentos têm grande impacto.\n"
+            f"Liquidação em aproximadamente {100/leverage:.1f}% de movimento contra.\n\n"
+        )
+    elif leverage > 3 and is_altcoin:
+        risk_warning = (
+            f"\n⚠️ **Atenção:** Altcoin com {leverage}x é arriscado!\n"
+            "Altcoins têm maior volatilidade que BTC/ETH.\n\n"
+        )
+    
+    step_summary = MessageFormatter.futures_registration_step(4, trade)
+    
+    await update.message.reply_text(
+        step_summary + "\n\n"
+        f"{risk_warning}"
+        "━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
+        f"✅ **Etapa 4/8 concluída!**\n\n"
+        "📝 **Etapa 5/8 - Stop Loss**\n\n"
+        "Digite o **preço do Stop Loss**:\n\n"
+        f"💡 Preço de entrada: U$ {format_us_price(trade.get('entry_price', 0))}\n\n"
+        "_O cálculo de % será feito automaticamente._",
+        reply_markup=KeyboardBuilder.cancel_action(),
+        parse_mode=ParseMode.MARKDOWN
+    )
+    
+    context.user_data['awaiting_futures_stop_loss'] = True
+
+
+async def handle_futures_stop_loss_input(update: Update, context: ContextTypes.DEFAULT_TYPE, text: str):
+    """Handle stop loss price input - Step 5 of new trade flow."""
+    from src.utils.formatters import format_us_price, parse_us_number, MessageFormatter
+    
+    try:
+        stop_loss = parse_us_number(text)
+        if stop_loss <= 0:
+            raise ValueError()
+    except:
+        await update.message.reply_text(
+            "❌ Valor inválido.\n\n"
+            "Digite o preço do stop loss.\n"
+            "Exemplo: `88,000.00`",
+            reply_markup=KeyboardBuilder.cancel_action(),
+            parse_mode=ParseMode.MARKDOWN
+        )
+        return
+    
+    trade = context.user_data['futures_trade']
+    entry_price = trade.get('entry_price', 0)
     side = trade.get('side', 'long')
     leverage = trade.get('leverage', 1)
     futures_balance = trade.get('futures_balance', 0)
-    risk_percent = trade.get('risk_percent', 5.0)
-    open_risk = trade.get('open_risk', 0)
     
-    # Calculate risk parameters
-    if futures_balance > 0:
-        risk_calc = risk_service.calculate_risk(
-            futures_balance=futures_balance,
-            risk_percent=risk_percent,
-            entry_price=price,
-            leverage=leverage,
-            direction=side,
-            open_positions_risk=open_risk
-        )
-        
-        context.user_data['futures_trade']['risk_calc'] = risk_calc
-        
-        # Show risk analysis and ask for margin
-        risk_msg = risk_service.format_risk_summary(risk_calc, price, leverage, side)
-        
-        await update.message.reply_text(
-            risk_msg + "\n\n"
-            "💰 **Qual a MARGEM (aporte) deste trade?**\n\n"
-            "Digite o valor em USD que será usado como colateral:\n\n"
-            f"💡 _Sugestão baseada no risco: ${risk_calc.max_risk_usd:,.2f}_",
-            reply_markup=KeyboardBuilder.cancel_action(),
-            parse_mode=ParseMode.MARKDOWN
-        )
-        
-        context.user_data['awaiting_futures_margin_for_risk'] = True
+    # Calculate stop % based on entry and stop loss
+    if entry_price > 0:
+        if side == 'long':
+            stop_percent = ((entry_price - stop_loss) / entry_price) * 100
+        else:
+            stop_percent = ((stop_loss - entry_price) / entry_price) * 100
     else:
-        # No balance configured, use old flow
-        context.user_data['awaiting_futures_quantity'] = True
+        stop_percent = 0
+    
+    # Calculate risk in USD (simplified - assumes full position at risk)
+    # Risk = (stop_percent / 100) * position_value * leverage
+    # For now, estimate margin as a portion of balance
+    estimated_margin = futures_balance * 0.1 if futures_balance > 0 else 100
+    risk_usd = (stop_percent / 100) * estimated_margin * leverage
+    
+    context.user_data['futures_trade']['stop_loss'] = stop_loss
+    context.user_data['futures_trade']['stop_percent'] = stop_percent
+    context.user_data['futures_trade']['risk_usd'] = risk_usd
+    context.user_data['futures_trade']['step'] = 5
+    context.user_data.pop('awaiting_futures_stop_loss', None)
+    
+    step_summary = MessageFormatter.futures_registration_step(5, trade)
+    
+    # Calculate what % of portfolio this stop represents
+    risk_of_balance = (risk_usd / futures_balance * 100) if futures_balance > 0 else 0
+    
+    await update.message.reply_text(
+        step_summary + "\n\n"
+        f"📊 **Análise do Stop Loss:**\n"
+        f"• Distância: {stop_percent:.2f}%\n"
+        f"• Risco estimado: ~U$ {format_us_price(risk_usd)}\n"
+        f"• % da carteira: ~{risk_of_balance:.2f}%\n\n"
+        "━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
+        f"✅ **Etapa 5/8 concluída!**\n\n"
+        "📝 **Etapa 6/8 - Alvos de Venda**\n\n"
+        "Digite o **primeiro alvo de venda** no formato:\n"
+        "`preço percentual`\n\n"
+        "Exemplo: `99,000.00 50`\n"
+        "_(significa vender 50% quando atingir U$ 99,000.00)_",
+        reply_markup=KeyboardBuilder.cancel_action(),
+        parse_mode=ParseMode.MARKDOWN
+    )
+    
+    context.user_data['awaiting_futures_targets'] = True
+    context.user_data['futures_trade']['target_count'] = 1
+
+
+async def handle_futures_targets_input(update: Update, context: ContextTypes.DEFAULT_TYPE, text: str):
+    """Handle targets input - Step 6 of new trade flow."""
+    from src.utils.formatters import format_us_price, parse_us_number, MessageFormatter
+    
+    parts = text.strip().split()
+    
+    if len(parts) < 2:
+        await update.message.reply_text(
+            "❌ Formato inválido.\n\n"
+            "Use: `preço percentual`\n"
+            "Exemplo: `99,000.00 50` (vender 50% a U$ 99,000.00)",
+            reply_markup=KeyboardBuilder.cancel_action(),
+            parse_mode=ParseMode.MARKDOWN
+        )
+        return
+    
+    try:
+        target_price = parse_us_number(parts[0])
+        target_percent = float(parts[1].replace('%', ''))
+        
+        if target_price <= 0 or target_percent <= 0 or target_percent > 100:
+            raise ValueError()
+    except:
+        await update.message.reply_text(
+            "❌ Valores inválidos.\n\n"
+            "Use: `preço percentual`\n"
+            "Exemplo: `99,000.00 50` (vender 50% a U$ 99,000.00)",
+            reply_markup=KeyboardBuilder.cancel_action(),
+            parse_mode=ParseMode.MARKDOWN
+        )
+        return
+    
+    trade = context.user_data['futures_trade']
+    target_count = trade.get('target_count', 1)
+    
+    # Store target
+    trade['targets'].append({
+        'price': target_price,
+        'percent': target_percent
+    })
+    
+    # Also store in individual fields
+    trade[f'target_{target_count}'] = {
+        'price': target_price,
+        'percent': target_percent
+    }
+    
+    # Check total percent
+    total_percent = sum(t.get('percent', 0) for t in trade['targets'])
+    
+    targets_summary = ""
+    for i, t in enumerate(trade['targets'], 1):
+        entry_price = trade.get('entry_price', 0)
+        side = trade.get('side', 'long')
+        profit_pct = ((t['price'] - entry_price) / entry_price * 100) if entry_price > 0 else 0
+        if side == 'short':
+            profit_pct = -profit_pct
+        targets_summary += f"   🎯 Alvo {i}: U$ {format_us_price(t['price'])} > {t['percent']:.0f}% (Lucro {profit_pct:.1f}%)\n"
+    
+    if total_percent >= 100 or target_count >= 3:
+        # Proceed to next step
+        trade['step'] = 6
+        context.user_data.pop('awaiting_futures_targets', None)
+        
+        step_summary = MessageFormatter.futures_registration_step(6, trade)
         
         await update.message.reply_text(
-            f"📝 **Trade: {pair}** {leverage}x @ ${price:,.4f}\n\n"
-            "Digite a **quantidade** de moedas:\n\n"
-            "Exemplo: `0.1` para 0.1 BTC",
-            reply_markup=KeyboardBuilder.cancel_action(),
+            step_summary + "\n\n"
+            "✅ **Alvos configurados:**\n"
+            f"{targets_summary}\n"
+            "━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
+            f"✅ **Etapa 6/8 concluída!**\n\n"
+            "📝 **Etapa 7/8 - Timeframe**\n\n"
+            "Qual **timeframe** você usou para analisar a operação?\n"
+            "_Isso ajuda a identificar suportes e resistências_",
+            reply_markup=KeyboardBuilder.futures_timeframe_selection(),
             parse_mode=ParseMode.MARKDOWN
         )
-
-
-async def handle_futures_margin_for_risk_input(update: Update, context: ContextTypes.DEFAULT_TYPE, text: str):
-    """Handle margin input for risk calculation - Step between entry and stop %."""
-    from src.services.risk_management import risk_service
-    
-    try:
-        margin = float(text.replace(',', '.').replace('$', ''))
-        if margin <= 0:
-            raise ValueError()
-    except ValueError:
+    else:
+        # Ask for more targets
+        remaining = 100 - total_percent
+        trade['target_count'] = target_count + 1
+        
         await update.message.reply_text(
-            "❌ Por favor, insira um número válido.\n\n"
-            "Exemplo: `100` ou `500.50`",
-            reply_markup=KeyboardBuilder.cancel_action(),
+            f"✅ Alvo {target_count} adicionado!\n\n"
+            f"**Alvos configurados:**\n{targets_summary}\n"
+            f"📊 Total: {total_percent:.0f}% | Restante: {remaining:.0f}%\n\n"
+            f"Digite o **próximo alvo** ou clique em 'Concluir alvos':",
+            reply_markup=KeyboardBuilder.futures_targets_options(),
             parse_mode=ParseMode.MARKDOWN
         )
-        return
-    
-    context.user_data['futures_trade']['margin'] = margin
-    context.user_data.pop('awaiting_futures_margin_for_risk', None)
-    
-    trade = context.user_data['futures_trade']
-    entry_price = trade.get('entry_price', 0)
-    side = trade.get('side', 'long')
-    leverage = trade.get('leverage', 1)
-    risk_calc = trade.get('risk_calc')
-    
-    # Calculate position size based on margin
-    position_value = margin * leverage
-    quantity = position_value / entry_price if entry_price > 0 else 0
-    context.user_data['futures_trade']['quantity'] = quantity
-    
-    # Calculate suggested stop % based on margin and max risk
-    max_risk = risk_calc.max_risk_usd if risk_calc else margin * 0.05
-    # suggested_stop = (max_risk / position_value) * 100
-    suggested_stop = (max_risk / position_value) * 100 if position_value > 0 else 2.0
-    suggested_stop = min(suggested_stop, 10.0)  # Cap at 10%
-    
-    await update.message.reply_text(
-        f"✅ **Margem definida: ${margin:,.2f}**\n"
-        f"📊 Posição total: ${position_value:,.2f}\n"
-        f"📦 Quantidade: {quantity:,.6f}\n\n"
-        f"❓ **Qual % de stop você quer usar?**\n\n"
-        f"Digite o percentual de distância do stop (ex: `2.5` para 2.5%):\n\n"
-        f"💡 _Sugerido: {suggested_stop:.2f}% = perda máx ${(position_value * suggested_stop / 100):,.2f}_",
-        reply_markup=KeyboardBuilder.cancel_action(),
-        parse_mode=ParseMode.MARKDOWN
-    )
-    
-    context.user_data['awaiting_futures_stop_percent'] = True
-
-
-async def handle_futures_stop_percent_input(update: Update, context: ContextTypes.DEFAULT_TYPE, text: str):
-    """Handle user's stop loss percentage input - Step 4 of new trade flow."""
-    from src.services.risk_management import risk_service
-    
-    try:
-        stop_pct = float(text.replace(',', '.').replace('%', ''))
-        if stop_pct <= 0 or stop_pct > 50:
-            raise ValueError()
-    except ValueError:
-        await update.message.reply_text(
-            "❌ Por favor, insira um percentual válido (0.1 a 50).\n\n"
-            "Exemplo: `2.5` para 2.5%",
-            reply_markup=KeyboardBuilder.cancel_action(),
-            parse_mode=ParseMode.MARKDOWN
-        )
-        return
-    
-    context.user_data.pop('awaiting_futures_stop_percent', None)
-    
-    trade = context.user_data['futures_trade']
-    entry_price = trade.get('entry_price', 0)
-    side = trade.get('side', 'long')
-    leverage = trade.get('leverage', 1)
-    margin = trade.get('margin', 0)  # Use margin instead of futures_balance
-    risk_calc = trade.get('risk_calc')
-    
-    # Calculate stop loss details using margin
-    stop_calc = risk_service.calculate_stop_loss(
-        entry_price=entry_price,
-        stop_percent=stop_pct,
-        direction=side,
-        leverage=leverage,
-        margin=margin,  # Now using actual trade margin
-        max_risk_usd=risk_calc.max_risk_usd if risk_calc else margin,
-        available_risk_usd=risk_calc.available_risk_usd if risk_calc else margin
-    )
-    
-    context.user_data['futures_trade']['stop_percent'] = stop_pct
-    context.user_data['futures_trade']['stop_price'] = stop_calc.stop_price
-    context.user_data['futures_trade']['risk_usd'] = stop_calc.risk_usd
-    context.user_data['futures_trade']['stop_calc'] = stop_calc
-    
-    # Check if risk exceeds available
-    if stop_calc.risk_usd > (risk_calc.available_risk_usd if risk_calc else float('inf')):
-        await update.message.reply_text(
-            f"⚠️ **Risco Excede Disponível!**\n\n"
-            f"• Risco calculado: ${stop_calc.risk_usd:,.2f}\n"
-            f"• Disponível: ${risk_calc.available_risk_usd:,.2f}\n\n"
-            f"Reduza o % de stop ou feche outras posições.\n\n"
-            f"Digite um novo % de stop:",
-            reply_markup=KeyboardBuilder.cancel_action(),
-            parse_mode=ParseMode.MARKDOWN
-        )
-        context.user_data['awaiting_futures_stop_percent'] = True
-        return
-    
-    stop_msg = risk_service.format_stop_choice(stop_calc, risk_calc.max_risk_usd if risk_calc else stop_calc.risk_usd)
-    
-    await update.message.reply_text(
-        stop_msg + "\n\n"
-        "📊 **Qual timeframe você usou para analisar?**\n\n"
-        "Digite o timeframe (ex: `15m`, `1h`, `4h`, `1d`):",
-        reply_markup=KeyboardBuilder.cancel_action(),
-        parse_mode=ParseMode.MARKDOWN
-    )
-    
-    context.user_data['awaiting_futures_timeframe'] = True
 
 
 async def handle_futures_timeframe_input(update: Update, context: ContextTypes.DEFAULT_TYPE, text: str):
-    """Handle timeframe input - Step 5 of new trade flow."""
+    """Handle timeframe input - Step 7 of new trade flow."""
+    from src.utils.formatters import format_us_price, MessageFormatter
+    
     timeframe = text.strip().lower()
     
     # Validate timeframe format
@@ -1126,11 +1218,45 @@ async def handle_futures_timeframe_input(update: Update, context: ContextTypes.D
             timeframe = f"{timeframe}h"
     
     context.user_data['futures_trade']['timeframe'] = timeframe
+    context.user_data['futures_trade']['step'] = 7
     context.user_data.pop('awaiting_futures_timeframe', None)
     
     trade = context.user_data['futures_trade']
     pair = trade.get('pair', '???')
     side = trade.get('side', 'long')
+    
+    # Final step - show full summary and calculate risk
+    step_summary = MessageFormatter.futures_registration_step(8, trade)
+    
+    await update.message.reply_text(
+        step_summary + "\n\n"
+        f"✅ **Etapa 7/8 concluída!**\n\n"
+        "📝 **Etapa 8/8 - Cálculo de Risco e Confirmação**\n\n"
+        f"🔍 Analisando suportes e resistências para {pair} no timeframe {timeframe.upper()}...",
+        reply_markup=KeyboardBuilder.cancel_action(),
+        parse_mode=ParseMode.MARKDOWN
+    )
+    
+    # Show zone check option
+    await update.message.reply_text(
+        f"🔍 **Deseja verificar zonas de suporte/resistência?**\n\n"
+        f"Com base no timeframe {timeframe.upper()}, o bot pode sugerir:\n"
+        f"• {'Resistências e zonas de stop (SHORT)' if side == 'short' else 'Suportes e zonas de stop (LONG)'}\n"
+        f"• Ajustes no stop loss baseados em zonas técnicas\n\n"
+        f"Isso ajuda a posicionar o stop em zonas mais seguras.",
+        reply_markup=KeyboardBuilder.futures_zone_check(),
+        parse_mode=ParseMode.MARKDOWN
+    )
+
+
+async def handle_futures_stop_percent_input(update: Update, context: ContextTypes.DEFAULT_TYPE, text: str):
+    """Handle user's stop loss percentage input - Legacy flow."""
+    from src.services.risk_management import risk_service
+    context.user_data.pop('awaiting_futures_stop_percent', None)
+    
+    trade = context.user_data.get('futures_trade', {})
+    pair = trade.get('pair', '???')
+    timeframe = trade.get('timeframe', '4h')
     
     await update.message.reply_text(
         f"✅ Timeframe: **{timeframe.upper()}**\n\n"

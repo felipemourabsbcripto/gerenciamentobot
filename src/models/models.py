@@ -246,6 +246,17 @@ class FuturesTrade(Base):
     timeframe = Column(String(10), nullable=True)  # Timeframe usado na análise (ex: 1h, 4h)
     zone_used = Column(String(20), nullable=True)  # 'management' ou 'zone'
     
+    # Alvos de venda (targets) - JSON serializado como string
+    target_1_price = Column(Float, nullable=True)  # Preço alvo 1
+    target_1_percent = Column(Float, nullable=True)  # % a vender no alvo 1
+    target_2_price = Column(Float, nullable=True)  # Preço alvo 2
+    target_2_percent = Column(Float, nullable=True)  # % a vender no alvo 2
+    target_3_price = Column(Float, nullable=True)  # Preço alvo 3
+    target_3_percent = Column(Float, nullable=True)  # % a vender no alvo 3
+    
+    # Alocação do patrimônio
+    allocation_percent = Column(Float, nullable=True)  # % do patrimônio alocado neste trade
+    
     notes = Column(Text, nullable=True)  # Optional notes
     opened_at = Column(DateTime, default=datetime.utcnow)
     closed_at = Column(DateTime, nullable=True)

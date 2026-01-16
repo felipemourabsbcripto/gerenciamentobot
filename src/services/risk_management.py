@@ -185,6 +185,35 @@ class RiskManagementService:
             risk_used_percent=round(risk_used_percent, 1)
         )
     
+    def calculate_stop_percent(
+        self,
+        entry_price: float,
+        stop_price: float,
+        direction: str
+    ) -> float:
+        """
+        Calculate stop loss percentage based on entry and stop prices.
+        
+        Args:
+            entry_price: Entry price of the trade
+            stop_price: Stop loss price
+            direction: 'long' or 'short'
+        
+        Returns:
+            Stop loss percentage (positive value)
+        """
+        if entry_price <= 0:
+            return 0.0
+        
+        if direction.lower() == 'long':
+            # Para long, stop está abaixo do entry
+            stop_pct = ((entry_price - stop_price) / entry_price) * 100
+        else:
+            # Para short, stop está acima do entry
+            stop_pct = ((stop_price - entry_price) / entry_price) * 100
+        
+        return abs(stop_pct)
+    
     def calculate_position_size(
         self,
         futures_balance: float,
