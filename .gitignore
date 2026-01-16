@@ -43,7 +43,5 @@ Thumbs.db
 *.temp
 output.txt
 
-# Scripts de migração/fix pontuais
-fix_*.py
-migrate_*.py
-test_*.py
+# Nota: migrate_db.py, test_full_flow.py estão incluídos no projeto
+# Apenas scripts temporários específicos devem ser ignorados se necessário
