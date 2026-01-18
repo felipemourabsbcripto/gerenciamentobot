@@ -7,10 +7,7 @@ from sqlalchemy import select, update as sql_update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.models import FuturesTrade
-
-
-# Major coins that are NOT considered altcoins (lower risk)
-MAJOR_COINS = {"BTC", "ETH", "BNB"}
+from src.core import MAJOR_COINS
 
 
 class FuturesRepository:
