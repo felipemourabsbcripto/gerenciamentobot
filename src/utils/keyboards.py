@@ -13,22 +13,25 @@ class KeyboardBuilder:
         """Create main menu keyboard."""
         keyboard = [
             [
-                InlineKeyboardButton("📊 Minha Carteira", callback_data="portfolio"),
-                InlineKeyboardButton("📈 Futuros", callback_data="futures_menu"),
+                InlineKeyboardButton("📊 Gorni Carteira", callback_data="portfolio"),
+                InlineKeyboardButton("📈 Gorni Futuros", callback_data="futures_menu"),
             ],
             [
-                InlineKeyboardButton("⚠️ Painel de Risco", callback_data="risk_panel"),
+                InlineKeyboardButton("🧠 Gorni Estratégias", callback_data="gg_menu"),
+            ],
+            [
+                InlineKeyboardButton("⚠️ Gorni Risco", callback_data="risk_panel"),
             ],
             [
                 InlineKeyboardButton("➕ Adicionar Ativo", callback_data="add_asset"),
                 InlineKeyboardButton("🔍 Buscar Moeda", callback_data="search_coin"),
             ],
             [
-                InlineKeyboardButton("� Whale Alert", callback_data="whale_alert"),
-                InlineKeyboardButton("💵 Reserva USDT", callback_data="reserve_status"),
+                InlineKeyboardButton("🐋 Whale Alert", callback_data="whale_alert"),
+                InlineKeyboardButton("💵 Gorni Reserva", callback_data="reserve_status"),
             ],
             [
-                InlineKeyboardButton("📉 Análise Técnica", callback_data="technical_menu"),
+                InlineKeyboardButton("📉 Gorni Análise", callback_data="technical_menu"),
                 InlineKeyboardButton("⚙️ Configurações", callback_data="settings"),
             ],
         ]

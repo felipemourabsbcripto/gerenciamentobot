@@ -16,11 +16,9 @@ from src.utils import KeyboardBuilder, MessageFormatter
 from src.utils.formatters import format_us_price
 from src.utils.logger import get_logger
 from src.config.settings import settings
+from src.core import MAJOR_COINS
 
 logger = get_logger(__name__)
-
-# Major coins (not altcoins)
-MAJOR_COINS = {"BTC", "ETH", "BNB"}
 
 
 async def callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
