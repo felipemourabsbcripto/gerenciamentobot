@@ -25,6 +25,17 @@ from src.services.trend_analysis_service import (
     TrendDirection,
     trend_analysis_service
 )
+from src.services.gurugorni_strategies import (
+    GorniStrategyManager,
+    GorniShadowStrategy,
+    GorniReversalStrategy,
+    GorniMomentumStrategy,
+    GorniScalperStrategy,
+    get_strategy_manager,
+    ActionType,
+    StrategySignal,
+    STRATEGY_DESCRIPTIONS,
+)
 
 __all__ = [
     "MarketDataService",
@@ -47,4 +58,14 @@ __all__ = [
     "TrendAnalysis",
     "TrendDirection",
     "trend_analysis_service",
+    # Gorni Strategies
+    "GorniStrategyManager",
+    "GorniShadowStrategy",
+    "GorniReversalStrategy",
+    "GorniMomentumStrategy",
+    "GorniScalperStrategy",
+    "get_strategy_manager",
+    "ActionType",
+    "StrategySignal",
+    "STRATEGY_DESCRIPTIONS",
 ]

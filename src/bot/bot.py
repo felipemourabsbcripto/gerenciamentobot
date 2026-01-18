@@ -18,7 +18,10 @@ from src.bot.handlers import (
     portfolio_command,
     help_command,
     callback_handler,
-    message_handler
+    message_handler,
+    # Gorni Strategies
+    estrategias_command,
+    estrategias_callback,
 )
 from src.utils import KeyboardBuilder
 from src.utils.logger import get_logger
@@ -60,8 +63,15 @@ class CryptoPortfolioBot:
         self.application.add_handler(CommandHandler("menu", menu_command))
         self.application.add_handler(CommandHandler("portfolio", portfolio_command))
         self.application.add_handler(CommandHandler("help", help_command))
+        
+        # Gorni Strategies command
+        self.application.add_handler(CommandHandler("estrategias", estrategias_command))
 
-        # Callback query handler
+        # Gorni Strategies callback handler (isolado com pattern gg_*)
+        # IMPORTANTE: Deve vir ANTES do callback_handler geral
+        self.application.add_handler(CallbackQueryHandler(estrategias_callback, pattern="^gg_"))
+        
+        # Callback query handler geral (para todos os outros callbacks)
         self.application.add_handler(CallbackQueryHandler(callback_handler))
 
         # Message handler (for user input)
@@ -72,7 +82,7 @@ class CryptoPortfolioBot:
         # Error handler
         self.application.add_error_handler(self._error_handler)
 
-        logger.info("All handlers registered")
+        logger.info("All handlers registered (including Gorni Strategies)")
 
     async def _error_handler(self, update: Update, context):
         """Handle errors."""
