@@ -157,7 +157,12 @@ class MarketDataService:
         symbol = symbol.upper().replace("-", "").replace("/", "")
         
         # Remove USDT suffix if present for lookup
-        base = symbol.replace("USDT", "").replace("USD", "")
+        base = symbol.replace("USDT", "").replace("USD", "").replace(".P", "")
+        
+        # Handle stablecoins - they don't have a trading pair against themselves
+        if base in ["USDT", "USDC", "BUSD", "DAI", "TUSD"]:
+            # For stablecoins, we don't need to fetch price (always ~1.00)
+            return None
         
         # Check mapping
         if base in CRYPTO_SYMBOLS:
@@ -169,6 +174,11 @@ class MarketDataService:
     async def _fetch_ohlcv(self, symbol: str, timeframe: str = "1d", limit: int = 250) -> Optional[pd.DataFrame]:
         """Fetch OHLCV data from exchange with fallback."""
         ccxt_symbol = self._get_symbol(symbol)
+        
+        # Skip if symbol couldn't be mapped (e.g., stablecoins)
+        if ccxt_symbol is None:
+            logger.info(f"Skipping OHLCV fetch for {symbol} (stablecoin)")
+            return None
         
         # Try primary exchange
         try:
@@ -374,6 +384,26 @@ class MarketDataService:
     async def get_analysis(self, symbol: str, interval: str = "1d") -> Optional[MarketData]:
         """Get full technical analysis for a symbol."""
         try:
+            # Handle stablecoins - return fixed data
+            clean_symbol = symbol.upper().replace("USDT", "").replace("USD", "").replace(".P", "").replace("/", "")
+            if clean_symbol in ["USDT", "USDC", "BUSD", "DAI", "TUSD"]:
+                return MarketData(
+                    symbol=clean_symbol,
+                    exchange="STABLECOIN",
+                    price=1.0,
+                    change=0.0,
+                    change_percent=0.0,
+                    volume=0.0,
+                    high=1.0,
+                    low=1.0,
+                    open_price=1.0,
+                    recommendation="NEUTRAL",
+                    buy_signals=0,
+                    sell_signals=0,
+                    neutral_signals=1,
+                    timestamp=datetime.now()
+                )
+            
             # Check cache
             cache_key = f"{symbol}_{interval}"
             if cache_key in self._cache:

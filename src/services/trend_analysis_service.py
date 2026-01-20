@@ -87,6 +87,16 @@ class IchimokuResult:
 
 
 @dataclass
+class OBVResult:
+    """Resultado do On-Balance Volume."""
+    signal: str  # BULLISH, BEARISH, NEUTRAL
+    trend: str  # ACCUMULATION, DISTRIBUTION, NEUTRAL
+    divergence: bool  # True se há divergência preço/volume
+    divergence_type: str  # BULLISH_DIV, BEARISH_DIV, NONE
+    obv_change_percent: float  # Variação % do OBV
+
+
+@dataclass
 class TrendAnalysis:
     """Análise completa de tendência."""
     symbol: str
@@ -109,6 +119,7 @@ class TrendAnalysis:
     adx_trend: Optional[str] = None  # STRONG, WEAK, NO_TREND
     rsi: Optional[float] = None
     macd_histogram: Optional[float] = None
+    obv: Optional[OBVResult] = None  # On-Balance Volume - Indicador de confirmação de tendência
     
     # Scores
     bullish_score: int = 0
@@ -493,6 +504,101 @@ class TrendAnalysisService:
             logger.error(f"Error calculating MACD: {e}")
             return 0, 0, "NEUTRAL"
 
+    def _calculate_obv(self, df: pd.DataFrame) -> OBVResult:
+        """
+        Calcula On-Balance Volume (OBV) - Indicador de ALTA RELEVÂNCIA para confirmação de tendência.
+        
+        OBV é um dos indicadores mais importantes porque:
+        - Mostra se o volume confirma a tendência de preço
+        - Divergências OBV/Preço são sinais muito fortes de reversão
+        - Volume precede o preço - OBV subindo antes do preço = sinal de acumulação
+        
+        Interpretação:
+        - OBV subindo + Preço subindo = Tendência de alta confirmada
+        - OBV caindo + Preço caindo = Tendência de baixa confirmada
+        - OBV subindo + Preço lateral/caindo = DIVERGÊNCIA BULLISH (acumulação)
+        - OBV caindo + Preço lateral/subindo = DIVERGÊNCIA BEARISH (distribuição)
+        
+        Peso sugerido: 2.5 (maior que outros indicadores por ser confirmador de tendência)
+        """
+        try:
+            from ta.volume import OnBalanceVolumeIndicator
+            
+            close = df['close']
+            volume = df['volume']
+            
+            # Calcular OBV
+            obv_indicator = OnBalanceVolumeIndicator(close, volume)
+            obv = obv_indicator.on_balance_volume()
+            
+            # Valores atuais e históricos
+            obv_current = obv.iloc[-1]
+            obv_prev = obv.iloc[-2] if len(obv) > 1 else obv_current
+            obv_10_ago = obv.iloc[-10] if len(obv) > 10 else obv.iloc[0]
+            
+            price_current = close.iloc[-1]
+            price_10_ago = close.iloc[-10] if len(close) > 10 else close.iloc[0]
+            
+            # Calcular variação % do OBV
+            obv_change_percent = ((obv_current - obv_10_ago) / abs(obv_10_ago) * 100) if obv_10_ago != 0 else 0
+            price_change_percent = ((price_current - price_10_ago) / price_10_ago * 100) if price_10_ago != 0 else 0
+            
+            # Determinar tendência do OBV
+            obv_trend = "NEUTRAL"
+            if obv_change_percent > 5:
+                obv_trend = "ACCUMULATION"  # Acumulação - volume entrando
+            elif obv_change_percent < -5:
+                obv_trend = "DISTRIBUTION"  # Distribuição - volume saindo
+            
+            # Detectar divergências (sinais muito fortes!)
+            has_divergence = False
+            divergence_type = "NONE"
+            
+            # Divergência Bullish: Preço caindo/lateral mas OBV subindo
+            if price_change_percent <= 2 and obv_change_percent > 10:
+                has_divergence = True
+                divergence_type = "BULLISH_DIV"
+            
+            # Divergência Bearish: Preço subindo/lateral mas OBV caindo  
+            elif price_change_percent >= -2 and obv_change_percent < -10:
+                has_divergence = True
+                divergence_type = "BEARISH_DIV"
+            
+            # Determinar sinal geral
+            if has_divergence:
+                if divergence_type == "BULLISH_DIV":
+                    signal = "STRONG_BULLISH"
+                else:
+                    signal = "STRONG_BEARISH"
+            elif obv_change_percent > 10 and obv_current > obv_prev:
+                signal = "BULLISH"
+            elif obv_change_percent < -10 and obv_current < obv_prev:
+                signal = "BEARISH"
+            elif obv_change_percent > 3:
+                signal = "WEAK_BULLISH"
+            elif obv_change_percent < -3:
+                signal = "WEAK_BEARISH"
+            else:
+                signal = "NEUTRAL"
+            
+            return OBVResult(
+                signal=signal,
+                trend=obv_trend,
+                divergence=has_divergence,
+                divergence_type=divergence_type,
+                obv_change_percent=obv_change_percent
+            )
+            
+        except Exception as e:
+            logger.error(f"Error calculating OBV: {e}")
+            return OBVResult(
+                signal="NEUTRAL",
+                trend="NEUTRAL", 
+                divergence=False,
+                divergence_type="NONE",
+                obv_change_percent=0
+            )
+
     def _calculate_confluence_score(self, signals: List[IndicatorSignal]) -> float:
         """
         Calcula o Confluence Score combinando todos os indicadores.
@@ -513,6 +619,7 @@ class TrendAnalysisService:
             "ADX": 1.0,
             "RSI": 1.0,
             "MACD": 1.5,
+            "OBV": 2.5,  # MAIOR peso - confirmador de tendência via volume
         }
         
         for sig in signals:
@@ -719,6 +826,41 @@ class TrendAnalysisService:
                 timeframe=timeframe
             ))
             
+            # 7. OBV (On-Balance Volume) - INDICADOR DE ALTA RELEVÂNCIA
+            obv_result = self._calculate_obv(df)
+            if "STRONG_BULLISH" in obv_result.signal:
+                bullish_score += 2.5  # Peso maior para divergências
+                confidence = 90
+            elif "BULLISH" in obv_result.signal:
+                bullish_score += 1.5
+                confidence = 75
+            elif "STRONG_BEARISH" in obv_result.signal:
+                bearish_score += 2.5
+                confidence = 90
+            elif "BEARISH" in obv_result.signal:
+                bearish_score += 1.5
+                confidence = 75
+            elif "WEAK_BULLISH" in obv_result.signal:
+                bullish_score += 0.5
+                confidence = 55
+            elif "WEAK_BEARISH" in obv_result.signal:
+                bearish_score += 0.5
+                confidence = 55
+            else:
+                confidence = 50
+            
+            div_indicator = " ⚡DIVERGÊNCIA!" if obv_result.divergence else ""
+            obv_description = f"Tendência: {obv_result.trend}, OBV Var: {obv_result.obv_change_percent:+.1f}%{div_indicator}"
+            
+            signals.append(IndicatorSignal(
+                name="OBV",
+                signal=obv_result.signal,
+                value=obv_result.obv_change_percent,
+                description=obv_description,
+                confidence=confidence,
+                timeframe=timeframe
+            ))
+            
             # Calculate EMAs for reference
             close = df['close']
             ema_50 = EMAIndicator(close, window=50).ema_indicator().iloc[-1] if len(df) >= 50 else None
@@ -759,6 +901,7 @@ class TrendAnalysisService:
                 adx_trend=adx_trend,
                 rsi=rsi,
                 macd_histogram=histogram,
+                obv=obv_result,  # Novo indicador OBV
                 bullish_score=int(bullish_score),
                 bearish_score=int(bearish_score),
                 confluence_score=confluence_score,
@@ -777,6 +920,19 @@ class TrendAnalysisService:
         except Exception as e:
             logger.error(f"Error analyzing {symbol}: {e}")
             return None
+
+    async def analyze_symbol(self, symbol: str, timeframe: str = "4h") -> Optional[TrendAnalysis]:
+        """
+        Alias para analyze() - Mantido para compatibilidade.
+        
+        Args:
+            symbol: Símbolo do ativo (ex: BTC, ETH, BTCUSDT)
+            timeframe: Timeframe da análise
+        
+        Returns:
+            TrendAnalysis ou None
+        """
+        return await self.analyze(symbol, timeframe)
 
     async def analyze_multiple(self, symbols: List[str], timeframe: str = "4h") -> List[TrendAnalysis]:
         """Analisa múltiplos ativos."""
