@@ -384,7 +384,7 @@ async def handle_search_coin(query, context: ContextTypes.DEFAULT_TYPE):
 
 
 async def handle_whale_alert(query):
-    """Handle whale alert callback - Show info about Gorni Alerts (Whale Alert + Liquidations)."""
+    """Handle whale alert callback - Show info about Gorni Alerts (Whale Alert + Liquidations + Fear & Greed)."""
     message = (
         "🔔 **Alertas Gorni**\n\n"
         "Acompanhe movimentações importantes do mercado em tempo real!\n\n"
@@ -408,12 +408,21 @@ async def handle_whale_alert(query):
         "💡 Muitas liquidações LONG = possível fundo local\n"
         "💡 Muitas liquidações SHORT = possível topo local\n\n"
         "━━━━━━━━━━━━━━━━━━━━━\n\n"
-        "📱 **Canais no Telegram:**"
+        "😱 **FEAR & GREED INDEX**\n"
+        "Índice de Medo e Ganância do mercado crypto:\n\n"
+        "• 🔴 0-24: Medo Extremo (oportunidade de compra)\n"
+        "• 🟠 25-49: Medo\n"
+        "• 🟡 50-74: Ganância\n"
+        "• 🟢 75-100: Ganância Extrema (cautela)\n\n"
+        "💡 \"Compre quando há medo, venda quando há ganância\"\n\n"
+        "━━━━━━━━━━━━━━━━━━━━━\n\n"
+        "📱 **Links úteis:**"
     )
     
     keyboard = [
         [InlineKeyboardButton("🐋 Whale Alert", url="https://t.me/whale_alert_io")],
         [InlineKeyboardButton("💥 Binance Liquidations", url="https://t.me/BinanceLiquidations")],
+        [InlineKeyboardButton("😱 Fear & Greed Index", url="https://alternative.me/crypto/fear-and-greed-index/")],
         [InlineKeyboardButton("🔙 Voltar ao Menu", callback_data="menu")],
     ]
     
