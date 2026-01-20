@@ -156,12 +156,17 @@ class MarketDataService:
         """Convert symbol to ccxt format."""
         symbol = symbol.upper().replace("-", "").replace("/", "")
         
+        # Stablecoins - verificar ANTES de remover sufixos
+        # USDT, USDC, BUSD, DAI, TUSD = 1.00 USD sempre
+        clean_symbol = symbol.replace(".P", "")  # Remove perpetual suffix
+        if clean_symbol in ["USDT", "USDC", "BUSD", "DAI", "TUSD"]:
+            return None
+        
         # Remove USDT suffix if present for lookup
         base = symbol.replace("USDT", "").replace("USD", "").replace(".P", "")
         
-        # Stablecoins - tratamento especial (não busca preço via API)
-        # USDT, USDC, BUSD, DAI, TUSD = 1.00 USD sempre
-        if base in ["USDT", "USDC", "BUSD", "DAI", "TUSD"]:
+        # Verificar novamente após remover sufixos (caso base seja stablecoin)
+        if base in ["USDT", "USDC", "BUSD", "DAI", "TUSD", ""]:
             return None
         
         # Check mapping
@@ -384,15 +389,19 @@ class MarketDataService:
     async def get_analysis(self, symbol: str, interval: str = "1d") -> Optional[MarketData]:
         """Get full technical analysis for a symbol."""
         try:
-            # Handle stablecoins - return fixed data (exceto USDT que usa BRL para referência)
-            clean_symbol = symbol.upper().replace("USDT", "").replace("USD", "").replace(".P", "").replace("/", "")
+            # Primeiro limpa o símbolo para identificar stablecoins
+            # IMPORTANTE: Verificar ANTES de remover sufixos para capturar "USDT" puro
+            upper_symbol = symbol.upper().replace(".P", "").replace("/", "").replace("-", "")
             
-            # Outras stablecoins (não USDT) - preço fixo 1.00
-            if clean_symbol in ["USDC", "BUSD", "DAI", "TUSD"]:
+            # Lista de stablecoins
+            STABLECOINS = ["USDT", "USDC", "BUSD", "DAI", "TUSD"]
+            
+            # Verificar se é stablecoin diretamente
+            if upper_symbol in STABLECOINS:
                 return MarketData(
-                    symbol=clean_symbol,
+                    symbol=upper_symbol,
                     exchange="STABLECOIN",
-                    price=1.0,
+                    price=1.0,  # 1 stablecoin = 1 USD sempre
                     change=0.0,
                     change_percent=0.0,
                     volume=0.0,
@@ -406,15 +415,17 @@ class MarketDataService:
                     timestamp=datetime.now()
                 )
             
-            # USDT - busca preço em BRL para referência, mas valor em USD = 1.00
-            # O preço BRL é apenas para conferência/exibição
-            if clean_symbol == "USDT":
-                # Retorna preço fixo 1.00 USD (quantidade = valor)
-                # O monitoramento em BRL é feito separadamente se necessário
+            # Agora limpa para extrair o base symbol
+            clean_symbol = upper_symbol.replace("USDT", "").replace("USD", "")
+            
+            # Verificar se após limpeza é stablecoin ou vazio
+            if clean_symbol in STABLECOINS or clean_symbol == "":
+                # Se sobrou uma stablecoin ou vazio, retorna 1.0
+                final_symbol = clean_symbol if clean_symbol else upper_symbol
                 return MarketData(
-                    symbol="USDT",
-                    exchange="BINANCE",
-                    price=1.0,  # 1 USDT = 1 USD sempre
+                    symbol=final_symbol if final_symbol else "USDT",
+                    exchange="STABLECOIN",
+                    price=1.0,
                     change=0.0,
                     change_percent=0.0,
                     volume=0.0,

@@ -346,6 +346,16 @@ class PriceMonitor:
             
     async def close(self) -> None:
         """Close the price monitor and its services."""
-        await self.ta_service.close()
-        logger.info("PriceMonitor closed")
+        try:
+            # Fechar serviço de análise técnica (que fecha seu próprio tv_service se criou)
+            await self.ta_service.close()
+            
+            # Fechar serviço TradingView/MarketData diretamente se temos referência
+            if hasattr(self, 'tv_service') and self.tv_service:
+                await self.tv_service.close()
+                
+        except Exception as e:
+            logger.error(f"Erro ao fechar PriceMonitor: {e}")
+        finally:
+            logger.info("PriceMonitor closed")
 
