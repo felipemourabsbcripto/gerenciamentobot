@@ -4094,7 +4094,7 @@ async def handle_analyze_asset(query, context: ContextTypes.DEFAULT_TYPE):
 
 async def handle_analyze_timeframe(query, context: ContextTypes.DEFAULT_TYPE, timeframe: str):
     """Handle timeframe selection for asset analysis."""
-    from src.services.gurugorni_strategies import GorniShadowStrategy, GorniReversalHunter, GorniMomentumRider, GorniFlashScalper
+    from src.services.gurugorni_strategies import GorniShadowStrategy, GorniReversalStrategy, GorniMomentumStrategy, GorniScalperStrategy
     from src.services.trend_analysis_service import trend_analysis_service
     
     symbol = context.user_data.get('analyze_symbol', 'BTCUSDT')
