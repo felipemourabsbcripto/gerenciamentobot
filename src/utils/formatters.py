@@ -8,11 +8,23 @@ from src.models import Asset, Alert, FuturesTrade
 
 def parse_us_number(value: str) -> float:
     """
-    Parse number in US format (comma for thousands, dot for decimals).
-    Examples: 95,699.90 -> 95699.90 | 1,234,567.89 -> 1234567.89
-    Also handles Brazilian format: 95.699,90 -> 95699.90
+    Parse number in any format - very flexible.
+    Examples: 
+        95,699.90 -> 95699.90 
+        1,234,567.89 -> 1234567.89
+        95.699,90 -> 95699.90 (Brazilian)
+        0.00000001 -> 0.00000001
+        $999,999.00 -> 999999.00
+        1 -> 1.0
     """
-    value = value.strip().replace('$', '').replace('U$', '').replace(' ', '')
+    # Remove símbolos comuns
+    value = value.strip()
+    value = value.replace('$', '').replace('U$', '').replace('R$', '')
+    value = value.replace(' ', '').replace('\t', '')
+    
+    # Se estiver vazio, retorna 0
+    if not value:
+        return 0.0
     
     # Detectar formato brasileiro (ponto como separador de milhares)
     if ',' in value and '.' in value:
@@ -24,33 +36,51 @@ def parse_us_number(value: str) -> float:
             value = value.replace('.', '').replace(',', '.')
     elif ',' in value and '.' not in value:
         # Pode ser formato BR (1234,56) ou US (1,234)
-        # Se tem exatamente 2 dígitos após a vírgula, é BR
         parts = value.split(',')
-        if len(parts) == 2 and len(parts[1]) == 2:
+        if len(parts) == 2 and len(parts[1]) <= 2:
+            # Provavelmente BR: 1234,56 -> 1234.56
             value = value.replace(',', '.')
         else:
+            # Formato US com separador de milhares: 1,234,567
             value = value.replace(',', '')
     
     return float(value)
 
 
 def format_us_price(value: float) -> str:
-    """Format price in US format (comma for thousands, dot for decimals)."""
+    """
+    Format price in US format (comma for thousands, dot for decimals).
+    No limits on decimal places - shows all significant digits.
+    Examples:
+        99000 -> 99,000.00
+        1234567.89 -> 1,234,567.89
+        0.15 -> 0.15
+        0.00015 -> 0.00015
+        0.00000001 -> 0.00000001
+        0.000000000001 -> 0.000000000001
+    """
     if value is None or value == 0:
         return "0.00"
     
     abs_value = abs(value)
     
-    if abs_value >= 1000:
+    # For values >= 1, use 2 decimal places
+    if abs_value >= 1:
         return f"{value:,.2f}"
-    elif abs_value >= 1:
-        return f"{value:,.2f}"
-    elif abs_value >= 0.01:
-        return f"{value:,.4f}"
-    elif abs_value >= 0.0001:
-        return f"{value:,.6f}"
-    else:
-        return f"{value:,.8f}"
+    
+    # For small values, show all significant decimals
+    # Convert to string to find significant digits
+    str_val = f"{value:.12f}".rstrip('0')
+    
+    # Count decimal places needed
+    if '.' in str_val:
+        decimal_part = str_val.split('.')[1]
+        decimal_places = len(decimal_part)
+        # Minimum 2 decimal places
+        decimal_places = max(2, decimal_places)
+        return f"{value:,.{decimal_places}f}"
+    
+    return f"{value:,.2f}"
 
 
 def format_price(value: float) -> str:
@@ -696,7 +726,8 @@ class MessageFormatter:
         
         Follows the format:
         - Par selecionado
-        - Valor de entrada
+        - Preço de compra
+        - Valor investido
         - Long/Short
         - Alavancagem
         - Stop Loss
@@ -749,14 +780,15 @@ class MessageFormatter:
             f"📋 **RESUMO DO TRADE**\n",
             f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n",
             f"📝 **1. Par selecionado:** {pair}",
-            f"💵 **2. Preço de entrada:** U$ {format_us_price(entry_price)}",
-            f"{side_emoji} **3. Direção:** {side_text}",
-            f"⚡ **4. Alavancagem:** {leverage}x {lev_warning}",
-            f"🛑 **5. Stop Loss:** U$ {format_us_price(stop_loss)} ({stop_percent:.2f}%)",
+            f"💵 **2. Preço de compra:** U$ {format_us_price(entry_price)}",
+            f"💰 **3. Valor investido:** U$ {format_us_price(margin)} ({allocation_percent:.2f}% da carteira)",
+            f"{side_emoji} **4. Direção:** {side_text}",
+            f"⚡ **5. Alavancagem:** {leverage}x {lev_warning}",
+            f"🛑 **6. Stop Loss:** U$ {format_us_price(stop_loss)} ({stop_percent:.2f}%)",
         ]
         
         # Targets
-        lines.append(f"\n🎯 **6. Alvos de Venda:**")
+        lines.append(f"\n🎯 **7. Alvos de Venda:**")
         if target_1:
             t1_profit = ((target_1.get('price', 0) - entry_price) / entry_price * 100) if entry_price > 0 else 0
             if side == 'short':
@@ -773,18 +805,22 @@ class MessageFormatter:
                 t3_profit = -t3_profit
             lines.append(f"   🔜 3º Alvo: U$ {format_us_price(target_3.get('price', 0))} > {target_3.get('percent', 0):.0f}% (Lucro {t3_profit:.1f}%)")
         
-        lines.append(f"\n📊 **7. Timeframe:** {timeframe.upper()}")
+        lines.append(f"\n📊 **8. Timeframe:** {timeframe.upper()}")
         
         lines.append(f"\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
-        lines.append(f"\n💰 **Preço atual:** U$ {format_us_price(price_display)}")
-        lines.append(f"⏰ **Cadastrado em:** {now.strftime('%d/%m/%Y às %H:%M:%S')}")
+        lines.append(f"\n� **DETALHES DA POSIÇÃO (Margem/Colateral):**")
+        lines.append(f"   💰 **Margem:** U$ {format_us_price(margin)}")
+        lines.append(f"   📊 **Posição Total:** U$ {format_us_price(position_value)} ({leverage}x)")
+        lines.append(f"   📦 **Quantidade:** {quantity:,.6f} contratos")
+        lines.append(f"   📈 **Alocação:** {allocation_percent:.2f}% da carteira")
         
         lines.append(f"\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
         lines.append(f"\n💲 **Preço atual:** U$ {format_us_price(price_display)}")
         lines.append(f"⌚ **Atualizado em:** {now.strftime('%d/%m/%Y às %H:%M:%S')}")
         
-        lines.append(f"\n➡️ **Preço para compra:** U$ {format_us_price(entry_price)}")
-        lines.append(f"➡️ **Alocação de patrimônio:** {allocation_percent:.2f}%")
+        lines.append(f"\n➡️ **Preço de compra:** U$ {format_us_price(entry_price)}")
+        lines.append(f"➡️ **Valor Investido:** U$ {format_us_price(margin)}")
+        lines.append(f"➡️ **Posição Alavancada:** U$ {format_us_price(position_value)}")
         lines.append(f"➡️ **Alavancagem:** {leverage}x")
         
         lines.append(f"\n🎯 **Bons alvos de venda:**")
@@ -869,9 +905,9 @@ class MessageFormatter:
         if step >= 7:
             timeframe = trade_data.get('timeframe', '')
             if timeframe:
-                lines.append(f"✅ 7. Timeframe: **{timeframe.upper()}**")
+                lines.append(f"✅ 8. Timeframe: **{timeframe.upper()}**")
             else:
-                lines.append(f"⏳ 7. Timeframe: _aguardando..._")
+                lines.append(f"⏳ 8. Timeframe: _aguardando..._")
         
         if step >= 8:
             lines.append(f"⏳ 8. Cálculo de risco: _processando..._")

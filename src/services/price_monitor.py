@@ -21,6 +21,8 @@ class PriceMonitor:
         self.bot = bot
         self.tv_service = TradingViewService()
         self.ta_service = TechnicalAnalysisService(self.tv_service)
+        # Controle de alertas de reserva - apenas 1x ao dia por usuário
+        self._last_reserve_alert: Dict[int, datetime] = {}
         
     async def check_all_assets(self) -> None:
         """Check prices for all tracked assets and send alerts."""
@@ -161,9 +163,15 @@ class PriceMonitor:
             reserve_percent = (usdt_value / total_value) * 100
             target_percent = user.reserve_target_percent or 15.0
             
-            # Alert if reserve is below 50% of target
+            # Alert if reserve is below 50% of target (only once per day)
             if reserve_percent < (target_percent * 0.5):
-                await self._send_reserve_alert(user, reserve_percent, target_percent)
+                # Verificar se já enviou alerta hoje
+                last_alert = self._last_reserve_alert.get(user.telegram_id)
+                now = datetime.now()
+                
+                if last_alert is None or (now - last_alert).total_seconds() >= 86400:  # 24 horas
+                    await self._send_reserve_alert(user, reserve_percent, target_percent)
+                    self._last_reserve_alert[user.telegram_id] = now
                 
         except Exception as e:
             logger.error(f"Error checking reserve status: {e}")

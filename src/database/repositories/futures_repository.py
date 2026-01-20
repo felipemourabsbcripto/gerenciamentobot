@@ -37,6 +37,15 @@ class FuturesRepository:
             return "high"
         return "normal"
 
+    def _extract_symbol(self, pair: str) -> str:
+        """Extract base symbol from pair (e.g., BTC from BTCUSDT)."""
+        quote_currencies = ["USDT", "USDC", "USD", "BTC", "ETH", "BNB", "BUSD"]
+        symbol = pair.upper()
+        for q in quote_currencies:
+            if symbol.endswith(q):
+                return symbol[:-len(q)]
+        return symbol
+
     async def create(
         self,
         user_id: int,
@@ -53,13 +62,16 @@ class FuturesRepository:
         """Create a new futures trade."""
         # Normalize pair to uppercase
         pair = pair.upper().replace("/", "").replace("-", "")
+        symbol = self._extract_symbol(pair)
         
         is_altcoin = self._is_altcoin(pair)
         risk_level = self._calculate_risk_level(leverage, is_altcoin)
         
         trade = FuturesTrade(
             user_id=user_id,
+            symbol=symbol,
             pair=pair,
+            direction=side.lower(),
             side=side.lower(),
             leverage=leverage,
             entry_price=entry_price,
@@ -154,7 +166,8 @@ class FuturesRepository:
         if trade.side == "short":
             price_diff = -price_diff
         
-        pnl = price_diff * trade.quantity * trade.leverage
+        # P&L = (price_diff / entry_price) * margin * leverage
+        pnl = (price_diff / trade.entry_price) * trade.margin * trade.leverage if trade.entry_price > 0 else 0
         pnl_percent = (price_diff / trade.entry_price) * 100 * trade.leverage if trade.entry_price > 0 else 0
         
         trade.pnl = pnl
@@ -165,6 +178,49 @@ class FuturesRepository:
         
         await self.session.flush()
         return trade
+
+    async def calculate_trade_risk_usd(self, trade: FuturesTrade) -> float:
+        """
+        Calcula o risco em USD de um trade baseado no stop loss.
+        
+        Risco = (distância do stop em %) * margem * alavancagem
+        
+        Exemplo: 
+        - Entry: $100,000, Stop: $98,000 (2% de distância)
+        - Margem: $500, Alavancagem: 10x
+        - Risco = 2% * $500 * 10 = $100
+        """
+        if not trade.stop_loss or not trade.entry_price:
+            return 0.0
+        
+        # Calcular distância do stop em %
+        if trade.side == 'long':
+            stop_distance_percent = ((trade.entry_price - trade.stop_loss) / trade.entry_price) * 100
+        else:
+            stop_distance_percent = ((trade.stop_loss - trade.entry_price) / trade.entry_price) * 100
+        
+        # Risco = distância% * margem * alavancagem / 100
+        risk_usd = (stop_distance_percent / 100) * trade.margin * trade.leverage
+        
+        return max(0, risk_usd)  # Não pode ser negativo
+
+    async def get_total_open_risk(self, user_id: int) -> float:
+        """
+        Calcula o risco total em USD de todas posições abertas.
+        
+        Este é o valor que será perdido se TODOS os stops forem atingidos.
+        """
+        open_trades = await self.get_user_open_trades(user_id)
+        total_risk = 0.0
+        
+        for trade in open_trades:
+            if trade.risk_usd:
+                total_risk += trade.risk_usd
+            else:
+                # Recalcular se não estiver salvo
+                total_risk += await self.calculate_trade_risk_usd(trade)
+        
+        return total_risk
 
     async def delete_trade(self, trade_id: int) -> bool:
         """Delete a trade."""
@@ -205,11 +261,6 @@ class FuturesRepository:
             "total_risk_usd": total_risk_usd
         }
 
-    async def get_total_open_risk(self, user_id: int) -> float:
-        """Get total risk in USDT from all open positions."""
-        open_trades = await self.get_user_open_trades(user_id)
-        return sum(t.risk_usd or 0 for t in open_trades)
-
     async def create_with_risk(
         self,
         user_id: int,
@@ -237,13 +288,21 @@ class FuturesRepository:
         """Create a new futures trade with risk management data."""
         pair = pair.upper().replace("/", "").replace("-", "")
         
+        # Extract symbol from pair (e.g., BTCUSDT -> BTC)
+        symbol = self._extract_symbol(pair)
+        
+        # Normalize direction/side
+        direction = side.lower() if side else "long"
+        
         is_altcoin = self._is_altcoin(pair)
         risk_level = self._calculate_risk_level(leverage, is_altcoin)
         
         trade = FuturesTrade(
             user_id=user_id,
+            symbol=symbol,
             pair=pair,
-            side=side.lower(),
+            direction=direction,
+            side=direction,
             leverage=leverage,
             entry_price=entry_price,
             quantity=quantity,

@@ -47,9 +47,11 @@ class KeyboardBuilder:
     def settings_menu(is_admin: bool = False) -> InlineKeyboardMarkup:
         """Create settings menu keyboard."""
         keyboard = [
-            [InlineKeyboardButton("� Meus Dados", callback_data="my_profile_data")],
-            [InlineKeyboardButton("�🔔 Notificações On/Off", callback_data="toggle_notifications")],
+            [InlineKeyboardButton("📋 Meus Dados", callback_data="my_profile_data")],
+            [InlineKeyboardButton("🔔 Notificações On/Off", callback_data="toggle_notifications")],
             [InlineKeyboardButton("📊 Alertas Death Cross On/Off", callback_data="toggle_death_cross")],
+            [InlineKeyboardButton("📈 Alertas de Preço On/Off", callback_data="toggle_price_alerts")],
+            [InlineKeyboardButton("⏱️ Intervalo de Verificação", callback_data="set_check_interval")],
             [InlineKeyboardButton("💵 Configurar Meta Reserva", callback_data="set_reserve_target")],
             [InlineKeyboardButton("💰 Atualizar Saldo Futuros", callback_data="update_futures_balance")],
             [InlineKeyboardButton("⚙️ Risco por Trade (%)", callback_data="set_futures_risk_percent")],
@@ -57,6 +59,18 @@ class KeyboardBuilder:
         if is_admin:
             keyboard.append([InlineKeyboardButton("🔐 Painel Admin", callback_data="admin_panel")])
         keyboard.append([InlineKeyboardButton("🔙 Voltar ao Menu", callback_data="menu")])
+        return InlineKeyboardMarkup(keyboard)
+
+    @staticmethod
+    def check_interval_menu() -> InlineKeyboardMarkup:
+        """Create check interval selection keyboard."""
+        keyboard = [
+            [InlineKeyboardButton("⚡ 5 minutos", callback_data="interval_5")],
+            [InlineKeyboardButton("🕐 10 minutos", callback_data="interval_10")],
+            [InlineKeyboardButton("🕑 30 minutos", callback_data="interval_30")],
+            [InlineKeyboardButton("🕐 1 hora", callback_data="interval_60")],
+            [InlineKeyboardButton("🔙 Voltar", callback_data="settings")],
+        ]
         return InlineKeyboardMarkup(keyboard)
 
     @staticmethod
@@ -328,7 +342,20 @@ class KeyboardBuilder:
             [InlineKeyboardButton("📊 Histórico de Trades", callback_data="futures_history")],
             [InlineKeyboardButton("📉 Estatísticas", callback_data="futures_stats")],
             [InlineKeyboardButton("⚠️ Trades de Alto Risco", callback_data="futures_high_risk")],
+            [InlineKeyboardButton("⚙️ Gerenciamento de Risco", callback_data="futures_risk_management")],
             [InlineKeyboardButton("🔙 Voltar ao Menu", callback_data="menu")],
+        ]
+        return InlineKeyboardMarkup(keyboard)
+
+    @staticmethod
+    def futures_risk_management_menu(futures_balance: float = 0.0, risk_percent: float = 5.0) -> InlineKeyboardMarkup:
+        """Create risk management menu keyboard."""
+        keyboard = [
+            [InlineKeyboardButton("💰 Atualizar Saldo Futuros", callback_data="update_futures_balance")],
+            [InlineKeyboardButton("⚙️ Configurar % de Risco", callback_data="set_futures_risk_percent")],
+            [InlineKeyboardButton("📊 Ver Risco Atual", callback_data="futures_risk_status")],
+            [InlineKeyboardButton("ℹ️ Como funciona o risco", callback_data="futures_risk_info")],
+            [InlineKeyboardButton("🔙 Voltar", callback_data="futures_menu")],
         ]
         return InlineKeyboardMarkup(keyboard)
 

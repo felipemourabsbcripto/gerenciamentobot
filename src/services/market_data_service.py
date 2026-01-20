@@ -138,15 +138,19 @@ class MarketDataService:
         logger.info("MarketDataService initialized")
 
     async def _get_exchange(self) -> ccxt.binance:
-        """Get or create Binance exchange instance."""
+        """Get or create exchange instance. Uses Kraken as primary (works in US/EU)."""
         if self._exchange is None:
-            self._exchange = ccxt.binance({
+            # Use Kraken as primary - works in US and EU
+            self._exchange = ccxt.kraken({
                 'enableRateLimit': True,
-                'options': {
-                    'defaultType': 'spot',
-                }
             })
         return self._exchange
+    
+    async def _get_fallback_exchange(self):
+        """Get fallback exchange (Gate.io) if primary fails."""
+        return ccxt.gate({
+            'enableRateLimit': True,
+        })
 
     def _get_symbol(self, symbol: str) -> str:
         """Convert symbol to ccxt format."""
@@ -163,25 +167,41 @@ class MarketDataService:
         return f"{base}/USDT"
 
     async def _fetch_ohlcv(self, symbol: str, timeframe: str = "1d", limit: int = 250) -> Optional[pd.DataFrame]:
-        """Fetch OHLCV data from Binance."""
+        """Fetch OHLCV data from exchange with fallback."""
+        ccxt_symbol = self._get_symbol(symbol)
+        
+        # Try primary exchange
         try:
             exchange = await self._get_exchange()
-            ccxt_symbol = self._get_symbol(symbol)
-            
             ohlcv = await exchange.fetch_ohlcv(ccxt_symbol, timeframe, limit=limit)
             
-            if not ohlcv:
-                return None
-            
-            df = pd.DataFrame(ohlcv, columns=['timestamp', 'open', 'high', 'low', 'close', 'volume'])
-            df['timestamp'] = pd.to_datetime(df['timestamp'], unit='ms')
-            df.set_index('timestamp', inplace=True)
-            
-            return df
-            
+            if ohlcv:
+                df = pd.DataFrame(ohlcv, columns=['timestamp', 'open', 'high', 'low', 'close', 'volume'])
+                df['timestamp'] = pd.to_datetime(df['timestamp'], unit='ms')
+                df.set_index('timestamp', inplace=True)
+                return df
+                
         except Exception as e:
-            logger.error(f"Error fetching OHLCV for {symbol}: {e}")
-            return None
+            logger.warning(f"Primary exchange failed for {symbol}: {e}")
+        
+        # Try fallback exchange
+        try:
+            fallback = await self._get_fallback_exchange()
+            try:
+                ohlcv = await fallback.fetch_ohlcv(ccxt_symbol, timeframe, limit=limit)
+                
+                if ohlcv:
+                    df = pd.DataFrame(ohlcv, columns=['timestamp', 'open', 'high', 'low', 'close', 'volume'])
+                    df['timestamp'] = pd.to_datetime(df['timestamp'], unit='ms')
+                    df.set_index('timestamp', inplace=True)
+                    return df
+            finally:
+                await fallback.close()
+                
+        except Exception as e:
+            logger.error(f"Fallback exchange also failed for {symbol}: {e}")
+        
+        return None
 
     def _calculate_indicators(self, df: pd.DataFrame) -> Dict[str, Any]:
         """Calculate all technical indicators using ta library."""

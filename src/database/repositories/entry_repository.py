@@ -17,12 +17,22 @@ class EntryRepository:
 
     async def create_entry(self, asset_id: int, entry_price: float, 
                            quantity: float, total_value: float = None,
-                           notes: str = None, entry_date: datetime = None) -> AssetEntry:
+                           notes: str = None, entry_date: datetime = None,
+                           user_id: int = None) -> AssetEntry:
         """Create a new entry for an asset."""
         if total_value is None:
             total_value = entry_price * quantity
         
+        # Get user_id from asset if not provided
+        if user_id is None:
+            asset = await self.session.get(Asset, asset_id)
+            if asset:
+                user_id = asset.user_id
+            else:
+                raise ValueError(f"Asset {asset_id} not found")
+        
         entry = AssetEntry(
+            user_id=user_id,
             asset_id=asset_id,
             entry_price=entry_price,
             quantity=quantity,
@@ -53,7 +63,8 @@ class EntryRepository:
             asset.total_invested = total_cost
             asset.average_price = total_cost / total_qty if total_qty > 0 else 0
         else:
-            asset.average_price = asset.purchase_price
+            # Keep existing average_price if no entries
+            pass
         
         await self.session.flush()
 

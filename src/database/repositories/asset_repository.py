@@ -25,7 +25,6 @@ class AssetRepository:
             symbol=symbol.upper(),
             name=name,
             quantity=quantity,
-            purchase_price=purchase_price,
             average_price=purchase_price,
             total_invested=total_invested,
             is_confirmed=is_confirmed

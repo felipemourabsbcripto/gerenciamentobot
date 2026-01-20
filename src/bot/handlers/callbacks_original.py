@@ -55,6 +55,13 @@ async def callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await handle_toggle_notifications(query, user.id)
         elif data == "toggle_death_cross":
             await handle_toggle_death_cross(query, user.id)
+        elif data == "toggle_price_alerts":
+            await handle_toggle_price_alerts(query, user.id)
+        elif data == "set_check_interval":
+            await handle_set_check_interval(query, user.id)
+        elif data.startswith("interval_"):
+            interval = int(data.replace("interval_", ""))
+            await handle_update_check_interval(query, user.id, interval)
         elif data == "set_reserve_target":
             await handle_set_reserve_target(query, context)
         elif data == "my_profile_data":
@@ -185,6 +192,10 @@ async def callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await handle_futures_stats(query, user.id)
         elif data == "futures_high_risk":
             await handle_futures_high_risk(query, user.id)
+        elif data == "futures_risk_management":
+            await handle_futures_risk_management(query, user.id)
+        elif data == "futures_risk_status":
+            await handle_futures_risk_status(query, user.id)
         elif data == "futures_risk_info":
             await handle_futures_risk_info(query)
         elif data.startswith("futures_side_"):
@@ -424,13 +435,19 @@ async def handle_settings(query, telegram_id: int):
     
     notif_status = "🔔 Ativadas" if user.notifications_enabled else "🔕 Desativadas"
     dc_status = "🔔 Ativados" if user.death_cross_alerts else "🔕 Desativados"
+    price_alerts_status = "🔔 Ativados" if getattr(user, 'price_alerts_enabled', True) else "🔕 Desativados"
+    check_interval = getattr(user, 'check_interval_minutes', 5)
     reserve_target = user.reserve_target_percent or settings.monitoring.reserve_percent
     futures_balance = user.futures_balance or 0
+    
+    interval_text = {5: "5 min", 10: "10 min", 30: "30 min", 60: "1 hora"}
     
     message = (
         f"⚙️ **Configurações**\n\n"
         f"📊 **Notificações**: {notif_status}\n"
         f"📉 **Alertas Death Cross**: {dc_status}\n"
+        f"📈 **Alertas de Preço**: {price_alerts_status}\n"
+        f"⏱️ **Intervalo Verificação**: {interval_text.get(check_interval, f'{check_interval} min')}\n"
         f"💵 **Meta de Reserva**: {reserve_target}%\n"
         f"💰 **Saldo Futuros**: ${futures_balance:,.2f}\n\n"
         f"Selecione uma opção para alterar:"
@@ -656,6 +673,81 @@ async def handle_toggle_death_cross(query, telegram_id: int):
         status = "ativados" if user.death_cross_alerts else "desativados"
         await query.edit_message_text(
             f"✅ Alertas de Death Cross **{status}** com sucesso!",
+            reply_markup=KeyboardBuilder.settings_menu(),
+            parse_mode=ParseMode.MARKDOWN
+        )
+    else:
+        await query.edit_message_text(
+            "❌ Erro ao alterar configuração.",
+            reply_markup=KeyboardBuilder.back_to_menu()
+        )
+
+
+async def handle_toggle_price_alerts(query, telegram_id: int):
+    """Handle toggle price alerts callback."""
+    async with get_async_session() as session:
+        user_repo = UserRepository(session)
+        user = await user_repo.toggle_price_alerts(telegram_id)
+    
+    if user:
+        status = "ativados" if user.price_alerts_enabled else "desativados"
+        await query.edit_message_text(
+            f"✅ Alertas de preço dos ativos **{status}** com sucesso!\n\n"
+            f"{'📈 Você receberá alertas quando seus ativos tiverem variações significativas.' if user.price_alerts_enabled else '🔕 Alertas de preço desativados.'}",
+            reply_markup=KeyboardBuilder.settings_menu(),
+            parse_mode=ParseMode.MARKDOWN
+        )
+    else:
+        await query.edit_message_text(
+            "❌ Erro ao alterar configuração.",
+            reply_markup=KeyboardBuilder.back_to_menu()
+        )
+
+
+async def handle_set_check_interval(query, telegram_id: int):
+    """Handle set check interval callback - show interval options."""
+    async with get_async_session() as session:
+        user_repo = UserRepository(session)
+        user = await user_repo.get_by_telegram_id(telegram_id)
+    
+    current_interval = user.check_interval_minutes if user else 5
+    
+    interval_text = {
+        5: "⚡ 5 minutos",
+        10: "🕐 10 minutos",
+        30: "🕑 30 minutos",
+        60: "🕐 1 hora"
+    }
+    
+    await query.edit_message_text(
+        f"⏱️ **Intervalo de Verificação de Preços**\n\n"
+        f"📊 Intervalo atual: **{interval_text.get(current_interval, f'{current_interval} min')}**\n\n"
+        f"Escolha com que frequência o bot deve verificar os preços dos seus ativos:\n\n"
+        f"• ⚡ **5 min** - Monitoramento intensivo\n"
+        f"• 🕐 **10 min** - Balanceado\n"
+        f"• 🕑 **30 min** - Economia de recursos\n"
+        f"• 🕐 **1 hora** - Verificação periódica",
+        reply_markup=KeyboardBuilder.check_interval_menu(),
+        parse_mode=ParseMode.MARKDOWN
+    )
+
+
+async def handle_update_check_interval(query, telegram_id: int, interval: int):
+    """Handle update check interval callback."""
+    async with get_async_session() as session:
+        user_repo = UserRepository(session)
+        user = await user_repo.update_check_interval(telegram_id, interval)
+    
+    if user:
+        interval_text = {
+            5: "5 minutos",
+            10: "10 minutos",
+            30: "30 minutos",
+            60: "1 hora"
+        }
+        await query.edit_message_text(
+            f"✅ Intervalo de verificação atualizado para **{interval_text.get(interval, f'{interval} min')}**!\n\n"
+            f"📊 O bot verificará os preços dos seus ativos a cada {interval} minutos.",
             reply_markup=KeyboardBuilder.settings_menu(),
             parse_mode=ParseMode.MARKDOWN
         )
@@ -1014,7 +1106,7 @@ async def handle_trend_timeframe(query, context, telegram_id: int, data: str):
                     )
                     return
                 
-                trades = await futures_repo.get_open_trades(user.id)
+                trades = await futures_repo.get_user_open_trades(user.id)
             
             if not trades:
                 await query.edit_message_text(
@@ -1947,8 +2039,10 @@ async def handle_confirm_delete(query, telegram_id: int, asset_id: int):
 
 async def handle_add_entry(query, context: ContextTypes.DEFAULT_TYPE, asset_id: int):
     """Handle add entry callback."""
+    from src.utils.formatters import format_us_price
+    
     context.user_data['entry_asset_id'] = asset_id
-    context.user_data['state'] = 'waiting_entry_quantity'
+    context.user_data['state'] = 'waiting_entry_price'
     
     async with get_async_session() as session:
         asset_repo = AssetRepository(session)
@@ -1957,7 +2051,10 @@ async def handle_add_entry(query, context: ContextTypes.DEFAULT_TYPE, asset_id: 
     if asset:
         await query.edit_message_text(
             f"➕ **Nova Entrada - {asset.symbol.upper()}**\n\n"
-            f"Digite a **quantidade** comprada:",
+            f"━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
+            f"**1️⃣ Valor de compra do ativo U$:**\n\n"
+            f"Digite o preço unitário que você pagou pelo ativo.\n\n"
+            f"_Exemplo: 95000, 0.00015, 99,000.00_",
             reply_markup=KeyboardBuilder.cancel_action(),
             parse_mode=ParseMode.MARKDOWN
         )
@@ -2175,7 +2272,7 @@ async def handle_futures_add(query, context: ContextTypes.DEFAULT_TYPE):
     
     await query.edit_message_text(
         "📝 **Novo Trade Futuros**\n\n"
-        "📋 **Etapa 1/8 - Par de negociação**\n\n"
+        "📋 **Etapa 1/9 - Par de negociação**\n\n"
         "Digite o **par** do trade:\n\n"
         "Exemplos: `BTC/USDT`, `ETH/USDT`, `SOL`, `DOGE`\n"
         "Formatos especiais: `BTC.P`, `USDT.P`, `TOTAL`\n\n"
@@ -2186,7 +2283,7 @@ async def handle_futures_add(query, context: ContextTypes.DEFAULT_TYPE):
 
 
 async def handle_futures_side(query, context: ContextTypes.DEFAULT_TYPE, side: str):
-    """Handle futures trade side selection - Step 3."""
+    """Handle futures trade side selection - Step 4."""
     from src.utils.formatters import format_us_price, MessageFormatter
     
     if 'futures_trade' not in context.user_data:
@@ -2197,17 +2294,17 @@ async def handle_futures_side(query, context: ContextTypes.DEFAULT_TYPE, side: s
         return
     
     context.user_data['futures_trade']['side'] = side
-    context.user_data['futures_trade']['step'] = 3
+    context.user_data['futures_trade']['step'] = 4
     pair = context.user_data['futures_trade'].get('pair', '???')
     is_altcoin = context.user_data['futures_trade'].get('is_altcoin', False)
     
-    step_summary = MessageFormatter.futures_registration_step(3, context.user_data['futures_trade'])
+    step_summary = MessageFormatter.futures_registration_step(4, context.user_data['futures_trade'])
     
     await query.edit_message_text(
         step_summary + "\n\n"
         "━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
-        f"✅ **Etapa 3/8 concluída!**\n\n"
-        "📝 **Etapa 4/8 - Alavancagem**\n\n"
+        f"✅ **Etapa 4/9 concluída!**\n\n"
+        "📝 **Etapa 5/9 - Alavancagem**\n\n"
         "Selecione a **alavancagem**:\n\n"
         + ("⚠️ **ATENÇÃO:** Este é um altcoin. Alavancagem >3x é arriscada!\n\n" if is_altcoin else "")
         + "💡 Exemplos: 1x 2x 3x 10x 20x\n"
@@ -2218,7 +2315,7 @@ async def handle_futures_side(query, context: ContextTypes.DEFAULT_TYPE, side: s
 
 
 async def handle_futures_leverage(query, context: ContextTypes.DEFAULT_TYPE, leverage: int):
-    """Handle futures leverage selection - Step 4."""
+    """Handle futures leverage selection - Step 5."""
     from src.utils.formatters import format_us_price, MessageFormatter
     
     if 'futures_trade' not in context.user_data:
@@ -2229,43 +2326,110 @@ async def handle_futures_leverage(query, context: ContextTypes.DEFAULT_TYPE, lev
         return
     
     context.user_data['futures_trade']['leverage'] = leverage
-    context.user_data['futures_trade']['step'] = 4
+    context.user_data['futures_trade']['step'] = 5
     is_altcoin = context.user_data['futures_trade'].get('is_altcoin', False)
     trade = context.user_data['futures_trade']
+    entry_price = trade.get('entry_price', 0)
+    side = trade.get('side', 'long')
+    margin = trade.get('margin', 0)
     
-    # Risk warning based on leverage
-    risk_warning = ""
-    if leverage >= 20:
-        risk_warning = (
-            "\n💀 **RISCO EXTREMO!**\n"
-            f"Com {leverage}x, você será liquidado em ~{100/leverage:.1f}% de movimento contra.\n"
-            "⚠️ Volatilidade do mercado cripto pode facilmente atingir isso!\n\n"
+    # Calculate quantity and position value based on margin and leverage
+    position_value = margin * leverage
+    quantity = position_value / entry_price if entry_price > 0 else 0
+    
+    context.user_data['futures_trade']['quantity'] = quantity
+    context.user_data['futures_trade']['position_value'] = position_value
+    
+    # Calculate liquidation info
+    liquidation_percent = 100 / leverage
+    if side == 'long':
+        liquidation_price = entry_price * (1 - liquidation_percent / 100)
+    else:
+        liquidation_price = entry_price * (1 + liquidation_percent / 100)
+    
+    # Build comprehensive risk info
+    risk_info = (
+        f"\n⚠️ **RISCO DE LIQUIDAÇÃO ({leverage}x)**\n"
+        "━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
+        f"📊 **Margem Isolada:** O risco é limitado APENAS à margem desta operação.\n"
+        f"✅ Seu saldo restante fica protegido.\n\n"
+        f"💵 **Valor Investido:** U$ {format_us_price(margin)}\n"
+        f"📊 **Posição Total:** U$ {format_us_price(position_value)} ({leverage}x)\n"
+        f"📦 **Quantidade:** {quantity:,.6f} contratos\n\n"
+        f"💥 **Liquidação ocorre quando:**\n"
+        f"   • Perdas consomem sua margem inicial\n"
+        f"   • Preço atinge o Preço de Liquidação\n\n"
+        f"📍 **Movimento para liquidação:** ~{liquidation_percent:.1f}%\n"
+        f"💰 **Preço de Liquidação estimado:** U$ {format_us_price(liquidation_price)}\n\n"
+    )
+    
+    # Add risk level emoji and warning
+    if leverage >= 50:
+        risk_emoji = "💀💀💀"
+        risk_level = "EXTREMAMENTE PERIGOSO"
+        risk_info += (
+            f"{risk_emoji} **{risk_level}**\n"
+            f"Com {leverage}x, apenas {liquidation_percent:.1f}% contra = LIQUIDAÇÃO!\n"
+            "O mercado cripto pode mover isso em MINUTOS!\n\n"
+        )
+    elif leverage >= 20:
+        risk_emoji = "💀"
+        risk_level = "RISCO EXTREMO"
+        risk_info += (
+            f"{risk_emoji} **{risk_level}**\n"
+            f"Com {leverage}x, apenas {liquidation_percent:.1f}% contra = LIQUIDAÇÃO!\n"
+            "Volatilidade cripto pode facilmente atingir isso.\n\n"
         )
     elif leverage >= 10:
-        risk_warning = (
-            f"\n⚠️ **Atenção:** Com {leverage}x, pequenos movimentos têm grande impacto.\n"
-            f"Liquidação em aproximadamente {100/leverage:.1f}% de movimento contra.\n\n"
+        risk_emoji = "🔴"
+        risk_level = "RISCO ALTO"
+        risk_info += (
+            f"{risk_emoji} **{risk_level}**\n"
+            f"Com {leverage}x, {liquidation_percent:.1f}% contra = LIQUIDAÇÃO.\n"
+            "Use stop loss para proteção!\n\n"
         )
-    elif leverage > 3 and is_altcoin:
-        risk_warning = (
-            f"\n⚠️ **Atenção:** Altcoin com {leverage}x é arriscado!\n"
-            "Altcoins têm maior volatilidade que BTC/ETH.\n\n"
+    elif leverage >= 5:
+        risk_emoji = "🟠"
+        risk_level = "RISCO MODERADO"
+        risk_info += (
+            f"{risk_emoji} **{risk_level}**\n"
+            f"Tolerância de {liquidation_percent:.1f}% antes da liquidação.\n\n"
+        )
+    else:
+        risk_emoji = "🟢"
+        risk_level = "RISCO CONTROLADO"
+        risk_info += (
+            f"{risk_emoji} **{risk_level}**\n"
+            f"Boa tolerância de {liquidation_percent:.1f}% antes da liquidação.\n\n"
         )
     
-    step_summary = MessageFormatter.futures_registration_step(4, trade)
+    # Altcoin extra warning
+    if is_altcoin and leverage > 3:
+        risk_info += (
+            "⚠️ **ATENÇÃO ALTCOIN:** Maior volatilidade!\n"
+            "Altcoins podem mover 20-50% em um dia.\n\n"
+        )
     
-    # Proceed to ask for stop loss
+    risk_info += (
+        "💡 **Dica:** Você pode adicionar mais margem durante\n"
+        "a operação para afastar o preço de liquidação.\n"
+    )
+    
+    step_summary = MessageFormatter.futures_registration_step(5, trade)
+    
+    # Proceed to ask for stop loss - STEP 6
     context.user_data['awaiting_futures_stop_loss'] = True
     
     await query.edit_message_text(
-        step_summary + "\n\n"
-        f"{risk_warning}"
-        "━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
-        f"✅ **Etapa 4/8 concluída!**\n\n"
-        "📝 **Etapa 5/8 - Stop Loss**\n\n"
+        step_summary + "\n"
+        f"{risk_info}"
+        "\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
+        f"✅ **Etapa 5/9 concluída!**\n\n"
+        "📝 **Etapa 6/9 - Stop Loss**\n\n"
         "Digite o **preço do Stop Loss**:\n\n"
-        f"💡 Preço de entrada: U$ {format_us_price(trade.get('entry_price', 0))}\n\n"
-        "_O cálculo de % será feito automaticamente._",
+        f"💡 Preço de compra: U$ {format_us_price(entry_price)}\n"
+        f"💥 Preço de liquidação: U$ {format_us_price(liquidation_price)}\n\n"
+        "_Recomendação: Stop antes da liquidação!_",
         reply_markup=KeyboardBuilder.cancel_action(),
         parse_mode=ParseMode.MARKDOWN
     )
@@ -2382,8 +2546,8 @@ async def handle_futures_done_targets(query, context: ContextTypes.DEFAULT_TYPE)
         "✅ **Alvos de venda configurados:**\n"
         f"{targets_summary}\n"
         "━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
-        f"✅ **Etapa 6/8 concluída!**\n\n"
-        "📝 **Etapa 7/8 - Timeframe**\n\n"
+        f"✅ **Etapa 7/9 concluída!**\n\n"
+        "📝 **Etapa 8/9 - Timeframe**\n\n"
         "Qual **timeframe** você usou para analisar a operação?\n"
         "_Isso ajuda a identificar suportes e resistências_",
         reply_markup=KeyboardBuilder.futures_timeframe_selection(),
@@ -2556,6 +2720,132 @@ async def handle_futures_high_risk(query, telegram_id: int):
     )
 
 
+async def handle_futures_risk_management(query, telegram_id: int):
+    """Handle futures risk management menu."""
+    async with get_async_session() as session:
+        user_repo = UserRepository(session)
+        futures_repo = FuturesRepository(session)
+        
+        user = await user_repo.get_by_telegram_id(telegram_id)
+        if not user:
+            await query.edit_message_text(
+                "❌ Usuário não encontrado.",
+                reply_markup=KeyboardBuilder.back_to_menu()
+            )
+            return
+        
+        futures_balance = user.futures_balance or 0.0
+        risk_percent = user.futures_risk_percent or 5.0
+        max_risk_usd = futures_balance * (risk_percent / 100)
+        
+        # Get open trades to calculate used risk
+        open_trades = await futures_repo.get_user_open_trades(user.id)
+        used_risk_usd = 0.0
+        for trade in open_trades:
+            if trade.risk_usd:
+                used_risk_usd += trade.risk_usd
+        
+        available_risk_usd = max(0, max_risk_usd - used_risk_usd)
+    
+    message = (
+        "⚙️ **GERENCIAMENTO DE RISCO**\n\n"
+        "━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
+        f"💰 **Saldo Futuros:** U$ {futures_balance:,.2f}\n"
+        f"📊 **Risco por Trade:** {risk_percent}%\n\n"
+        "━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
+        f"💵 **Risco Máximo:** U$ {max_risk_usd:,.2f}\n"
+        f"🔒 **Risco em Uso:** U$ {used_risk_usd:,.2f}\n"
+        f"✅ **Risco Disponível:** U$ {available_risk_usd:,.2f}\n\n"
+        "━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
+        "📈 **Posições Abertas:** {}\n".format(len(open_trades))
+    )
+    
+    await query.edit_message_text(
+        message,
+        reply_markup=KeyboardBuilder.futures_risk_management_menu(futures_balance, risk_percent),
+        parse_mode=ParseMode.MARKDOWN
+    )
+
+
+async def handle_futures_risk_status(query, telegram_id: int):
+    """Handle futures risk status view."""
+    from src.services.risk_management import risk_service
+    
+    async with get_async_session() as session:
+        user_repo = UserRepository(session)
+        futures_repo = FuturesRepository(session)
+        
+        user = await user_repo.get_by_telegram_id(telegram_id)
+        if not user:
+            await query.edit_message_text(
+                "❌ Usuário não encontrado.",
+                reply_markup=KeyboardBuilder.back_to_menu()
+            )
+            return
+        
+        futures_balance = user.futures_balance or 0.0
+        risk_percent = user.futures_risk_percent or 5.0
+        max_risk_usd = futures_balance * (risk_percent / 100)
+        
+        # Get open trades
+        open_trades = await futures_repo.get_user_open_trades(user.id)
+        
+        used_risk_usd = 0.0
+        trades_info = []
+        for trade in open_trades:
+            risk = trade.risk_usd or 0.0
+            used_risk_usd += risk
+            side_emoji = "🟢" if trade.side == "long" else "🔴"
+            trades_info.append(f"  {side_emoji} {trade.pair} {trade.leverage}x - Risco: U$ {risk:,.2f}")
+        
+        available_risk_usd = max(0, max_risk_usd - used_risk_usd)
+        risk_used_percent = (used_risk_usd / max_risk_usd * 100) if max_risk_usd > 0 else 0
+    
+    # Determine risk status
+    if risk_used_percent >= 100:
+        status_emoji = "🔴"
+        status_text = "RISCO MÁXIMO ATINGIDO"
+    elif risk_used_percent >= 75:
+        status_emoji = "🟠"
+        status_text = "RISCO ALTO"
+    elif risk_used_percent >= 50:
+        status_emoji = "🟡"
+        status_text = "RISCO MODERADO"
+    else:
+        status_emoji = "🟢"
+        status_text = "RISCO BAIXO"
+    
+    message = (
+        f"📊 **STATUS DE RISCO** {status_emoji}\n\n"
+        "━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
+        f"💰 **Saldo Futuros:** U$ {futures_balance:,.2f}\n"
+        f"⚙️ **Risco Configurado:** {risk_percent}%\n\n"
+        f"💵 **Risco Máximo:** U$ {max_risk_usd:,.2f}\n"
+        f"🔒 **Risco em Uso:** U$ {used_risk_usd:,.2f} ({risk_used_percent:.1f}%)\n"
+        f"✅ **Risco Disponível:** U$ {available_risk_usd:,.2f}\n\n"
+        f"📈 **Status:** {status_text}\n\n"
+        "━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
+        f"📋 **Posições Abertas ({len(open_trades)}):**\n"
+    )
+    
+    if trades_info:
+        message += "\n".join(trades_info)
+    else:
+        message += "  Nenhuma posição aberta"
+    
+    keyboard = [
+        [InlineKeyboardButton("💰 Atualizar Saldo", callback_data="update_futures_balance")],
+        [InlineKeyboardButton("⚙️ Alterar % Risco", callback_data="set_futures_risk_percent")],
+        [InlineKeyboardButton("🔙 Voltar", callback_data="futures_risk_management")],
+    ]
+    
+    await query.edit_message_text(
+        message,
+        reply_markup=InlineKeyboardMarkup(keyboard),
+        parse_mode=ParseMode.MARKDOWN
+    )
+
+
 async def handle_futures_detail(query, telegram_id: int, trade_id: int):
     """Handle futures trade detail view."""
     async with get_async_session() as session:
@@ -2613,6 +2903,8 @@ async def handle_futures_close(query, context: ContextTypes.DEFAULT_TYPE, trade_
 
 async def handle_futures_close_confirm(query, context: ContextTypes.DEFAULT_TYPE, telegram_id: int, trade_id: int):
     """Handle confirmed close of futures trade."""
+    from src.utils.formatters import format_us_price
+    
     close_price = context.user_data.get('futures_close_price')
     
     if not close_price:
@@ -2621,6 +2913,10 @@ async def handle_futures_close_confirm(query, context: ContextTypes.DEFAULT_TYPE
             reply_markup=KeyboardBuilder.futures_menu()
         )
         return
+    
+    old_balance = 0
+    new_balance = 0
+    trade = None
     
     async with get_async_session() as session:
         user_repo = UserRepository(session)
@@ -2634,11 +2930,33 @@ async def handle_futures_close_confirm(query, context: ContextTypes.DEFAULT_TYPE
             )
             return
         
+        # Guardar saldo anterior
+        old_balance = user.futures_balance or 0
+        
         trade = await futures_repo.close_trade(trade_id, close_price)
+        
+        if trade and trade.pnl is not None:
+            # Atualizar saldo da carteira de futuros com P&L
+            new_balance = old_balance + trade.pnl
+            await user_repo.update_futures_balance(telegram_id, new_balance)
+        else:
+            new_balance = old_balance
+        
         await session.commit()
     
     if trade:
         message = MessageFormatter.futures_closed_trade_summary(trade)
+        
+        # Adicionar informação do saldo atualizado
+        pnl_emoji = "🟢" if trade.pnl >= 0 else "🔴"
+        message += (
+            f"\n\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
+            f"💰 **CARTEIRA ATUALIZADA:**\n"
+            f"   Saldo anterior: U$ {format_us_price(old_balance)}\n"
+            f"   {pnl_emoji} P&L: U$ {format_us_price(trade.pnl)}\n"
+            f"   **Novo saldo:** U$ {format_us_price(new_balance)}\n"
+        )
+        
         await query.edit_message_text(
             message,
             reply_markup=KeyboardBuilder.futures_menu(),

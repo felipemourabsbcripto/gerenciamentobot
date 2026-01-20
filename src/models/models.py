@@ -50,6 +50,11 @@ class User(Base):
     is_active = Column(Boolean, default=True)
     notifications_enabled = Column(Boolean, default=True)
     death_cross_alerts = Column(Boolean, default=True)  # Enable death cross alerts
+    
+    # Configurações de alertas personalizados
+    price_alerts_enabled = Column(Boolean, default=True)  # Alertas de preço dos ativos on/off
+    check_interval_minutes = Column(Integer, default=5)  # Intervalo de verificação (5, 10, 30, 60)
+    
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
@@ -102,6 +107,11 @@ class Asset(Base):
 
     def __repr__(self):
         return f"<Asset(id={self.id}, coin_id={self.coin_id}, symbol={self.symbol})>"
+
+    @property
+    def purchase_price(self) -> float:
+        """Alias for average_price for backward compatibility."""
+        return self.average_price or 0.0
 
     @property
     def profit_loss_percent(self) -> Optional[float]:
@@ -225,8 +235,10 @@ class FuturesTrade(Base):
 
     id = Column(Integer, primary_key=True, autoincrement=True)
     user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    symbol = Column(String(20), nullable=False)  # Base symbol e.g., BTC, ETH
     pair = Column(String(50), nullable=False)  # e.g., BTCUSDT, ETHUSDT
-    side = Column(String(10), nullable=False)  # 'long' or 'short'
+    direction = Column(String(10), nullable=False)  # 'long' or 'short' (alias for side)
+    side = Column(String(10), nullable=True)  # 'long' or 'short'
     leverage = Column(Integer, nullable=False, default=1)  # Leverage multiplier
     entry_price = Column(Float, nullable=False)  # Entry price
     quantity = Column(Float, nullable=False)  # Position size in contracts/coins

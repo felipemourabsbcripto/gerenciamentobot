@@ -22,8 +22,3 @@ pydantic>=2.5.2
 
 # Async utilities
 asyncio-throttle>=1.0.2
-
-# Market Data
-ccxt>=4.0.0
-pandas>=2.0.0
-ta>=0.10.0

@@ -1,0 +1,35 @@
+{
+    "name": "Gerenciamento Bot",
+    "image": "mcr.microsoft.com/devcontainers/python:3.12",
+    
+    // Região Europa Ocidental para evitar bloqueios da Binance
+    "hostRequirements": {
+        "cpus": 2,
+        "memory": "4gb",
+        "storage": "32gb"
+    },
+    
+    // Configurações do VS Code
+    "customizations": {
+        "vscode": {
+            "extensions": [
+                "ms-python.python",
+                "ms-python.vscode-pylance"
+            ],
+            "settings": {
+                "python.defaultInterpreterPath": "/workspaces/gerenciamentobot/.venv/bin/python"
+            }
+        },
+        "codespaces": {
+            "openFiles": ["README.md"]
+        }
+    },
+    
+    // Comandos pós-criação
+    "postCreateCommand": "pip install -r requirements.txt",
+    
+    // Variáveis de ambiente
+    "remoteEnv": {
+        "PYTHONPATH": "${containerWorkspaceFolder}"
+    }
+}

@@ -119,6 +119,32 @@ class UserRepository:
         )
         return list(result.scalars().all())
 
+    async def toggle_price_alerts(self, telegram_id: int) -> Optional[User]:
+        """Toggle price alerts for user's assets."""
+        user = await self.get_by_telegram_id(telegram_id)
+        if user:
+            user.price_alerts_enabled = not user.price_alerts_enabled
+            await self.session.flush()
+        return user
+
+    async def update_check_interval(self, telegram_id: int, interval_minutes: int) -> Optional[User]:
+        """Update price check interval for user."""
+        user = await self.get_by_telegram_id(telegram_id)
+        if user:
+            user.check_interval_minutes = interval_minutes
+            await self.session.flush()
+        return user
+
+    async def get_users_with_price_alerts(self) -> List[User]:
+        """Get all users with price alerts enabled."""
+        result = await self.session.execute(
+            select(User).where(
+                User.is_active == True,
+                User.price_alerts_enabled == True
+            )
+        )
+        return list(result.scalars().all())
+
     async def complete_registration(
         self,
         telegram_id: int,
