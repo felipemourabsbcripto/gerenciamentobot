@@ -159,9 +159,9 @@ class MarketDataService:
         # Remove USDT suffix if present for lookup
         base = symbol.replace("USDT", "").replace("USD", "").replace(".P", "")
         
-        # Handle stablecoins - they don't have a trading pair against themselves
+        # Stablecoins - tratamento especial (não busca preço via API)
+        # USDT, USDC, BUSD, DAI, TUSD = 1.00 USD sempre
         if base in ["USDT", "USDC", "BUSD", "DAI", "TUSD"]:
-            # For stablecoins, we don't need to fetch price (always ~1.00)
             return None
         
         # Check mapping
@@ -384,13 +384,37 @@ class MarketDataService:
     async def get_analysis(self, symbol: str, interval: str = "1d") -> Optional[MarketData]:
         """Get full technical analysis for a symbol."""
         try:
-            # Handle stablecoins - return fixed data
+            # Handle stablecoins - return fixed data (exceto USDT que usa BRL para referência)
             clean_symbol = symbol.upper().replace("USDT", "").replace("USD", "").replace(".P", "").replace("/", "")
-            if clean_symbol in ["USDT", "USDC", "BUSD", "DAI", "TUSD"]:
+            
+            # Outras stablecoins (não USDT) - preço fixo 1.00
+            if clean_symbol in ["USDC", "BUSD", "DAI", "TUSD"]:
                 return MarketData(
                     symbol=clean_symbol,
                     exchange="STABLECOIN",
                     price=1.0,
+                    change=0.0,
+                    change_percent=0.0,
+                    volume=0.0,
+                    high=1.0,
+                    low=1.0,
+                    open_price=1.0,
+                    recommendation="NEUTRAL",
+                    buy_signals=0,
+                    sell_signals=0,
+                    neutral_signals=1,
+                    timestamp=datetime.now()
+                )
+            
+            # USDT - busca preço em BRL para referência, mas valor em USD = 1.00
+            # O preço BRL é apenas para conferência/exibição
+            if clean_symbol == "USDT":
+                # Retorna preço fixo 1.00 USD (quantidade = valor)
+                # O monitoramento em BRL é feito separadamente se necessário
+                return MarketData(
+                    symbol="USDT",
+                    exchange="BINANCE",
+                    price=1.0,  # 1 USDT = 1 USD sempre
                     change=0.0,
                     change_percent=0.0,
                     volume=0.0,
