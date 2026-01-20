@@ -242,8 +242,14 @@ class TrendAnalysisService:
             high = df['high']
             low = df['low']
             
-            # Ichimoku components
-            ichimoku = IchimokuIndicator(high, low, close)
+            # Ichimoku components with explicit integer parameters
+            ichimoku = IchimokuIndicator(
+                high=high, 
+                low=low, 
+                window1=int(9),  # Tenkan-sen (Conversion Line)
+                window2=int(26),  # Kijun-sen (Base Line)
+                window3=int(52)   # Senkou Span B
+            )
             
             tenkan = ichimoku.ichimoku_conversion_line().iloc[-1]
             kijun = ichimoku.ichimoku_base_line().iloc[-1]

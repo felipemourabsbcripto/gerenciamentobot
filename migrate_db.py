@@ -36,6 +36,7 @@ USER_COLUMNS = [
 # New columns to add to futures_trades table
 FUTURES_COLUMNS = [
     ("symbol", "VARCHAR(50)"),  # Símbolo base (ex: BTC, ETH)
+    ("direction", "VARCHAR(10)"),  # 'long' or 'short' (alias for side)
     ("stop_percent", "FLOAT"),
     ("risk_usd", "FLOAT"),
     ("timeframe", "VARCHAR(10)"),
