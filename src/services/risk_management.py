@@ -567,6 +567,187 @@ class LiquidityZoneService:
             f"por estar em região de alta liquidez._"
         )
 
+    def get_target_zones(
+        self,
+        zones: Dict[str, List[LiquidityZone]],
+        direction: str,
+        entry_price: float,
+        num_targets: int = 3
+    ) -> List[LiquidityZone]:
+        """
+        Get target zones (resistances for LONG, supports for SHORT).
+        
+        Args:
+            zones: Dict with 'resistance' and 'support' zones
+            direction: 'long' or 'short'
+            entry_price: Entry price of the trade
+            num_targets: Number of targets to return (default 3)
+        
+        Returns:
+            List of LiquidityZone as potential targets
+        """
+        if direction.lower() == 'long':
+            # For LONG, targets are resistances above entry
+            targets = [z for z in zones.get('resistance', []) if z.price > entry_price]
+        else:
+            # For SHORT, targets are supports below entry
+            targets = [z for z in zones.get('support', []) if z.price < entry_price]
+        
+        # Sort by distance and return closest ones
+        targets.sort(key=lambda z: z.distance_percent)
+        return targets[:num_targets]
+
+    def calculate_target_profit(
+        self,
+        entry_price: float,
+        target_price: float,
+        direction: str,
+        leverage: int,
+        quantity: float
+    ) -> Dict[str, float]:
+        """
+        Calculate profit at a target price.
+        
+        Returns:
+            Dict with profit_percent, profit_usd, leveraged_profit_percent
+        """
+        if direction.lower() == 'long':
+            price_change_percent = (target_price - entry_price) / entry_price * 100
+        else:
+            price_change_percent = (entry_price - target_price) / entry_price * 100
+        
+        leveraged_profit_percent = price_change_percent * leverage
+        position_value = quantity * entry_price
+        profit_usd = position_value * (price_change_percent / 100)
+        
+        return {
+            'profit_percent': round(price_change_percent, 2),
+            'leveraged_profit_percent': round(leveraged_profit_percent, 2),
+            'profit_usd': round(profit_usd, 2)
+        }
+
+    def format_target_analysis(
+        self,
+        zones: Dict[str, List[LiquidityZone]],
+        direction: str,
+        entry_price: float,
+        leverage: int,
+        quantity: float,
+        risk_usd: float
+    ) -> str:
+        """
+        Format target analysis message with suggested take profit levels.
+        
+        Args:
+            zones: Dict with 'resistance' and 'support' zones
+            direction: 'long' or 'short'
+            entry_price: Entry price
+            leverage: Leverage used
+            quantity: Position quantity
+            risk_usd: Risk in USD (for R:R calculation)
+        
+        Returns:
+            Formatted string with target suggestions
+        """
+        targets = self.get_target_zones(zones, direction, entry_price, num_targets=3)
+        
+        if not targets:
+            return (
+                "🎯 **Sugestão de Alvos**\n\n"
+                "❌ Não foram detectadas zonas de liquidez relevantes para alvos.\n"
+                "Considere usar alvos baseados em múltiplos do risco (1:2, 1:3)."
+            )
+        
+        direction_text = "LONG 📈" if direction.lower() == 'long' else "SHORT 📉"
+        target_type = "Resistência" if direction.lower() == 'long' else "Suporte"
+        
+        strength_emoji = {
+            'strong': '🔴',
+            'medium': '🟡', 
+            'weak': '🟢'
+        }
+        
+        msg = (
+            f"🎯 **Sugestão de Alvos ({direction_text})**\n\n"
+            f"📍 **Entrada:** U$ {entry_price:,.4f}\n"
+            f"⚡ **Alavancagem:** {leverage}x\n"
+            f"💰 **Risco:** U$ {risk_usd:,.2f}\n\n"
+            f"━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
+            f"**Zonas de {target_type} (Alvos):**\n\n"
+        )
+        
+        for i, target in enumerate(targets, 1):
+            profit = self.calculate_target_profit(
+                entry_price, target.price, direction, leverage, quantity
+            )
+            
+            # Calculate Risk:Reward ratio
+            rr_ratio = profit['profit_usd'] / risk_usd if risk_usd > 0 else 0
+            
+            emoji = strength_emoji.get(target.strength, '⚪')
+            
+            msg += (
+                f"🎯 **Alvo {i}:** U$ {target.price:,.4f}\n"
+                f"   {emoji} Liquidez: {target.strength.upper()}\n"
+                f"   📏 Distância: +{target.distance_percent:.2f}%\n"
+                f"   💵 Lucro: U$ {profit['profit_usd']:,.2f} ({profit['leveraged_profit_percent']:+.1f}% c/ alav.)\n"
+                f"   ⚖️ R:R = 1:{rr_ratio:.1f}\n\n"
+            )
+        
+        msg += (
+            f"━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
+            f"💡 **Dica:** Alvos em zonas de alta liquidez ({strength_emoji['strong']} FORTE) "
+            f"têm maior probabilidade de serem atingidos, mas podem gerar reversão.\n\n"
+            f"⚠️ Considere realizar parciais em cada alvo para garantir lucros."
+        )
+        
+        return msg
+
+    def suggest_targets_with_rr(
+        self,
+        entry_price: float,
+        stop_price: float,
+        direction: str,
+        min_rr: float = 1.5,
+        max_rr: float = 4.0
+    ) -> List[Dict[str, float]]:
+        """
+        Suggest targets based on Risk:Reward ratios when no zones available.
+        
+        Args:
+            entry_price: Entry price
+            stop_price: Stop loss price  
+            direction: 'long' or 'short'
+            min_rr: Minimum R:R ratio (default 1.5)
+            max_rr: Maximum R:R ratio (default 4.0)
+        
+        Returns:
+            List of suggested targets with R:R ratios
+        """
+        risk_distance = abs(entry_price - stop_price)
+        
+        targets = []
+        rr_values = [1.5, 2.0, 3.0]
+        
+        for rr in rr_values:
+            if rr > max_rr:
+                continue
+                
+            if direction.lower() == 'long':
+                target_price = entry_price + (risk_distance * rr)
+            else:
+                target_price = entry_price - (risk_distance * rr)
+            
+            profit_percent = abs(target_price - entry_price) / entry_price * 100
+            
+            targets.append({
+                'target_price': round(target_price, 4),
+                'rr_ratio': rr,
+                'profit_percent': round(profit_percent, 2)
+            })
+        
+        return targets
+
 
 # Global instances
 risk_service = RiskManagementService()

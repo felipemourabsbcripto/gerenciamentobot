@@ -3819,68 +3819,161 @@ async def handle_set_futures_risk_percent(query, context: ContextTypes.DEFAULT_T
 
 
 async def handle_futures_check_zones(query, context: ContextTypes.DEFAULT_TYPE):
-    """Check liquidity zones for the trade."""
-    from src.services.risk_management import liquidity_service
+    """Check liquidity zones for the trade - supports and resistances with targets."""
+    from src.services.risk_management import liquidity_service, LiquidityZone
+    from src.services.market_data_service import market_data_service
     
     trade = context.user_data.get('futures_trade', {})
     pair = trade.get('pair', '???')
-    symbol = trade.get('symbol', pair.replace('USDT', ''))
+    symbol = trade.get('symbol', pair.replace('USDT', '').replace('.P', ''))
     entry_price = trade.get('entry_price', 0)
     side = trade.get('side', 'long')
     stop_price = trade.get('stop_price', 0)
     risk_usd = trade.get('risk_usd', 0)
+    leverage = trade.get('leverage', 1)
+    quantity = trade.get('quantity', 0)
     
     await query.edit_message_text(
         f"🔍 **Analisando zonas de liquidez para {pair}...**\n\n"
-        f"Por favor, aguarde...",
+        f"Buscando suportes e resistências...",
         parse_mode=ParseMode.MARKDOWN
     )
     
-    # Get price data from TradingView
-    tv = TradingViewService()
     try:
-        # For now, we'll use a simplified zone detection
-        # In production, you'd fetch historical OHLC data
+        # Try to fetch real OHLCV data for zone detection
+        df = await market_data_service._fetch_ohlcv(symbol, '4h', limit=100)
         
-        # Simulated zone detection based on entry price
+        if df is not None and not df.empty:
+            # Use real data for zone detection
+            highs = df['high'].tolist()
+            lows = df['low'].tolist()
+            closes = df['close'].tolist()
+            
+            zones = liquidity_service.detect_zones(
+                highs, lows, closes, entry_price, order=5, num_recent=20
+            )
+        else:
+            # Fallback: generate estimated zones
+            zones = _generate_estimated_zones(entry_price, side)
+        
+        # Get stop zone (support for long, resistance for short)
         if side == 'long':
-            # For long, supports are below entry
-            zone_price = entry_price * 0.97  # 3% below as example
+            stop_zones = zones.get('support', [])
             zone_type = 'suporte'
         else:
-            # For short, resistances are above entry
-            zone_price = entry_price * 1.03  # 3% above as example
+            stop_zones = zones.get('resistance', [])
             zone_type = 'resistência'
         
+        # Get target zones (resistance for long, support for short)
+        target_zones = liquidity_service.get_target_zones(zones, side, entry_price, num_targets=3)
+        
+        # Store zones in context
+        context.user_data['futures_trade']['zones'] = zones
+        context.user_data['futures_trade']['target_zones'] = target_zones
+        
+        # Get nearest stop zone
+        zone_price = stop_zones[0].price if stop_zones else (entry_price * 0.97 if side == 'long' else entry_price * 1.03)
         zone_distance = abs(entry_price - zone_price) / entry_price * 100
+        zone_strength = stop_zones[0].strength if stop_zones else 'medium'
         
         context.user_data['futures_trade']['zone_price'] = zone_price
         context.user_data['futures_trade']['zone_distance'] = zone_distance
         
+        strength_emoji = {'strong': '🔴 FORTE', 'medium': '🟡 MÉDIA', 'weak': '🟢 FRACA'}
+        
+        # Build message
         zone_msg = (
             f"🔍 **Análise de Liquidez - {pair}**\n\n"
-            f"📍 **Zona de {zone_type} detectada:**\n"
-            f"   • Preço: ${zone_price:,.2f}\n"
-            f"   • Distância: ~{zone_distance:.1f}% do entry\n"
-            f"   • Força: 🟡 MÉDIA\n\n"
-            f"━━━━━━━━━━━━━━━━━━━━━\n\n"
-            f"**Comparação:**\n\n"
-            f"1️⃣ **Stop do Gerenciamento:**\n"
-            f"   • Preço: ${stop_price:,.2f}\n"
-            f"   • Risco: ${risk_usd:,.2f}\n\n"
-            f"2️⃣ **Stop na Zona de {zone_type.title()}:**\n"
-            f"   • Preço: ${zone_price:,.2f}\n"
-            f"   • Distância: ~{zone_distance:.1f}%\n\n"
-            f"💡 _A zona pode oferecer proteção adicional por estar em região de alta liquidez._"
+            f"📍 **Zona de {zone_type} para STOP:**\n"
+            f"   • Preço: U$ {zone_price:,.4f}\n"
+            f"   • Distância: ~{zone_distance:.2f}%\n"
+            f"   • Força: {strength_emoji.get(zone_strength, '🟡 MÉDIA')}\n\n"
+            f"━━━━━━━━━━━━━━━━━━━━━━━\n\n"
+            f"**Comparação de Stops:**\n\n"
+            f"1️⃣ **Stop Gerenciamento:**\n"
+            f"   • Preço: U$ {stop_price:,.4f}\n"
+            f"   • Risco: U$ {risk_usd:,.2f}\n\n"
+            f"2️⃣ **Stop na Zona:**\n"
+            f"   • Preço: U$ {zone_price:,.4f}\n"
+            f"   • Distância: ~{zone_distance:.2f}%\n\n"
         )
+        
+        # Add target suggestions
+        if target_zones:
+            target_type = "Resistência" if side == 'long' else "Suporte"
+            zone_msg += f"━━━━━━━━━━━━━━━━━━━━━━━\n\n🎯 **Alvos Sugeridos ({target_type}):**\n\n"
+            
+            for i, target in enumerate(target_zones, 1):
+                profit_info = liquidity_service.calculate_target_profit(
+                    entry_price, target.price, side, leverage, quantity
+                )
+                rr_ratio = profit_info['profit_usd'] / risk_usd if risk_usd > 0 else 0
+                
+                zone_msg += (
+                    f"🎯 **Alvo {i}:** U$ {target.price:,.4f}\n"
+                    f"   • +{target.distance_percent:.2f}% | Lucro: U$ {profit_info['profit_usd']:,.2f}\n"
+                    f"   • R:R = 1:{rr_ratio:.1f} | {strength_emoji.get(target.strength, '🟡')}\n\n"
+                )
+        
+        zone_msg += f"💡 _Zonas de alta liquidez ({strength_emoji['strong']}) têm maior probabilidade._"
         
         await query.edit_message_text(
             zone_msg,
             reply_markup=KeyboardBuilder.futures_zone_choice(zone_price),
             parse_mode=ParseMode.MARKDOWN
         )
-    finally:
-        await tv.close()
+    except Exception as e:
+        logger.error(f"Error checking zones: {e}")
+        # Fallback
+        if side == 'long':
+            zone_price = entry_price * 0.97
+            zone_type = 'suporte'
+        else:
+            zone_price = entry_price * 1.03
+            zone_type = 'resistência'
+        
+        zone_distance = abs(entry_price - zone_price) / entry_price * 100
+        context.user_data['futures_trade']['zone_price'] = zone_price
+        context.user_data['futures_trade']['zone_distance'] = zone_distance
+        
+        await query.edit_message_text(
+            f"🔍 **Análise de Liquidez - {pair}**\n\n"
+            f"⚠️ Usando estimativa simplificada.\n\n"
+            f"📍 **Zona de {zone_type}:** U$ {zone_price:,.4f}\n"
+            f"📏 **Distância:** ~{zone_distance:.2f}%\n\n"
+            f"1️⃣ Stop Gerenciamento: U$ {stop_price:,.4f}\n"
+            f"2️⃣ Stop na Zona: U$ {zone_price:,.4f}",
+            reply_markup=KeyboardBuilder.futures_zone_choice(zone_price),
+            parse_mode=ParseMode.MARKDOWN
+        )
+
+
+def _generate_estimated_zones(entry_price: float, side: str) -> dict:
+    """Generate estimated zones when real data is not available."""
+    from src.services.risk_management import LiquidityZone
+    
+    support_pcts = [0.97, 0.95, 0.92, 0.90, 0.85]
+    resistance_pcts = [1.03, 1.05, 1.08, 1.10, 1.15]
+    
+    supports = []
+    for pct in support_pcts:
+        price = entry_price * pct
+        distance = (entry_price - price) / entry_price * 100
+        supports.append(LiquidityZone(
+            price=round(price, 4), zone_type='support',
+            strength='medium', distance_percent=round(distance, 2)
+        ))
+    
+    resistances = []
+    for pct in resistance_pcts:
+        price = entry_price * pct
+        distance = (price - entry_price) / entry_price * 100
+        resistances.append(LiquidityZone(
+            price=round(price, 4), zone_type='resistance',
+            strength='medium', distance_percent=round(distance, 2)
+        ))
+    
+    return {'support': supports, 'resistance': resistances}
 
 
 async def handle_futures_skip_zones(query, context: ContextTypes.DEFAULT_TYPE):
