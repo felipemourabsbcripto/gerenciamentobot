@@ -54,7 +54,7 @@ class KeyboardBuilder:
             [InlineKeyboardButton("⏱️ Intervalo de Verificação", callback_data="set_check_interval")],
             [InlineKeyboardButton("💵 Configurar Meta Reserva", callback_data="set_reserve_target")],
             [InlineKeyboardButton("💰 Atualizar Saldo Futuros", callback_data="update_futures_balance")],
-            [InlineKeyboardButton("⚙️ Risco por Trade (%)", callback_data="set_futures_risk_percent")],
+            [InlineKeyboardButton("⚙️ Risco por Operação (%)", callback_data="set_futures_risk_percent")],
         ]
         if is_admin:
             keyboard.append([InlineKeyboardButton("🔐 Painel Admin", callback_data="admin_panel")])
@@ -100,7 +100,7 @@ class KeyboardBuilder:
         """Create actions keyboard after analysis result."""
         keyboard = [
             [InlineKeyboardButton("🔄 Analisar Outro Tempo", callback_data=f"analyze_change_tf_{symbol}")],
-            [InlineKeyboardButton("📈 Abrir Trade Futuros", callback_data="futures_add")],
+            [InlineKeyboardButton("📈 Nova Operação Futuros", callback_data="futures_add")],
             [InlineKeyboardButton("➕ Adicionar à Carteira", callback_data="add_asset")],
             [InlineKeyboardButton("🔙 Voltar ao Menu", callback_data="menu")],
         ]
@@ -304,7 +304,7 @@ class KeyboardBuilder:
         """Create keyboard for trend analysis options."""
         keyboard = [
             [InlineKeyboardButton("📈 Analisar Meus Ativos (Spot)", callback_data="trend_portfolio")],
-            [InlineKeyboardButton("📊 Analisar Trades Futuros", callback_data="trend_futures")],
+            [InlineKeyboardButton("📊 Analisar Operações Futuros", callback_data="trend_futures")],
             [InlineKeyboardButton("🔍 Analisar Ativo Específico", callback_data="trend_specific")],
             [InlineKeyboardButton("ℹ️ Sobre os Indicadores", callback_data="trend_info")],
             [InlineKeyboardButton("🔙 Voltar", callback_data="technical_menu")],
@@ -371,10 +371,10 @@ class KeyboardBuilder:
         """Create futures trading main menu keyboard."""
         keyboard = [
             [InlineKeyboardButton("📈 Posições Abertas", callback_data="futures_open")],
-            [InlineKeyboardButton("➕ Novo Trade", callback_data="futures_add")],
-            [InlineKeyboardButton("📊 Histórico de Trades", callback_data="futures_history")],
+            [InlineKeyboardButton("➕ Nova Operação", callback_data="futures_add")],
+            [InlineKeyboardButton("📊 Histórico", callback_data="futures_history")],
             [InlineKeyboardButton("📉 Estatísticas", callback_data="futures_stats")],
-            [InlineKeyboardButton("⚠️ Trades de Alto Risco", callback_data="futures_high_risk")],
+            [InlineKeyboardButton("⚠️ Alto Risco", callback_data="futures_high_risk")],
             [InlineKeyboardButton("⚙️ Gerenciamento de Risco", callback_data="futures_risk_management")],
             [InlineKeyboardButton("🔙 Voltar ao Menu", callback_data="menu")],
         ]
@@ -397,8 +397,8 @@ class KeyboardBuilder:
         """Create keyboard for selecting trade side (long/short)."""
         keyboard = [
             [
-                InlineKeyboardButton("🟢 LONG (Compra)", callback_data="futures_side_long"),
-                InlineKeyboardButton("🔴 SHORT (Venda)", callback_data="futures_side_short"),
+                InlineKeyboardButton("🟢 COMPRA (Alta)", callback_data="futures_side_long"),
+                InlineKeyboardButton("🔴 VENDA (Baixa)", callback_data="futures_side_short"),
             ],
             [InlineKeyboardButton("❌ Cancelar", callback_data="futures_menu")],
         ]
@@ -484,7 +484,7 @@ class KeyboardBuilder:
             ])
         else:
             keyboard.append([
-                InlineKeyboardButton("✅ Confirmar Trade", callback_data="futures_confirm")
+                InlineKeyboardButton("✅ Confirmar Operação", callback_data="futures_confirm")
             ])
         
         keyboard.append([InlineKeyboardButton("❌ Cancelar", callback_data="futures_menu")])
@@ -544,7 +544,7 @@ class KeyboardBuilder:
                 InlineKeyboardButton("✏️ Editar SL/TP", callback_data=f"futures_edit_sltp_{trade_id}"),
             ],
             [
-                InlineKeyboardButton("🔴 Fechar Trade", callback_data=f"futures_close_{trade_id}"),
+                InlineKeyboardButton("🔴 Fechar Operação", callback_data=f"futures_close_{trade_id}"),
                 InlineKeyboardButton("🗑️ Deletar", callback_data=f"futures_delete_{trade_id}"),
             ],
             [InlineKeyboardButton("🔙 Voltar às Posições", callback_data="futures_open")],
@@ -579,7 +579,7 @@ class KeyboardBuilder:
                 )
             ])
         
-        keyboard.append([InlineKeyboardButton("➕ Novo Trade", callback_data="futures_add")])
+        keyboard.append([InlineKeyboardButton("➕ Nova Operação", callback_data="futures_add")])
         keyboard.append([InlineKeyboardButton("🔙 Voltar", callback_data="futures_menu")])
         return InlineKeyboardMarkup(keyboard)
 
