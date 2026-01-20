@@ -27,7 +27,7 @@ class KeyboardBuilder:
                 InlineKeyboardButton("🔍 Buscar Moeda", callback_data="search_coin"),
             ],
             [
-                InlineKeyboardButton("🐋 Whale Alert", callback_data="whale_alert"),
+                InlineKeyboardButton("🔔 Alertas Gorni", callback_data="whale_alert"),
                 InlineKeyboardButton("💵 Gorni Reserva", callback_data="reserve_status"),
             ],
             [

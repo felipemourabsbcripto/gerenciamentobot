@@ -27,6 +27,9 @@ USER_COLUMNS = [
     ("banned_by", "INTEGER"),
     ("invited_by", "INTEGER"),
     ("invite_code", "VARCHAR(50)"),
+    # Configurações de alertas personalizados
+    ("price_alerts_enabled", "BOOLEAN DEFAULT 1"),
+    ("check_interval_minutes", "INTEGER DEFAULT 5"),
 ]
 
 # New columns to add to futures_trades table

@@ -384,29 +384,36 @@ async def handle_search_coin(query, context: ContextTypes.DEFAULT_TYPE):
 
 
 async def handle_whale_alert(query):
-    """Handle whale alert callback - Show info about Whale Alert channel."""
+    """Handle whale alert callback - Show info about Gorni Alerts (Whale Alert + Liquidations)."""
     message = (
-        "🐋 **Whale Alert**\n\n"
-        "Acompanhe movimentações de grandes baleias em tempo real!\n\n"
-        "O Whale Alert monitora transações massivas de criptomoedas:\n\n"
+        "🔔 **Alertas Gorni**\n\n"
+        "Acompanhe movimentações importantes do mercado em tempo real!\n\n"
+        "━━━━━━━━━━━━━━━━━━━━━\n\n"
+        "🐋 **WHALE ALERT**\n"
+        "Monitora transações massivas de criptomoedas:\n\n"
         "• 💰 Transferências milionárias de BTC, ETH, USDT\n"
         "• 🏦 Depósitos/Saques em exchanges\n"
         "• 🔥 Burns de tokens\n"
         "• 🆕 Mint de stablecoins\n"
         "• 🔒 Movimentações de carteiras dormentes\n\n"
+        "💡 Movimentações para exchanges = pressão de venda\n"
+        "💡 Saídas de exchanges = acumulação (bullish)\n\n"
         "━━━━━━━━━━━━━━━━━━━━━\n\n"
-        "📱 **Canal oficial no Telegram:**\n"
-        "👉 [Whale Alert](https://t.me/whale_alert_io)\n\n"
-        "🌐 **Site oficial:**\n"
-        "👉 [whale-alert.io](https://whale-alert.io)\n\n"
+        "💥 **LIQUIDAÇÕES BINANCE**\n"
+        "Monitora liquidações em tempo real:\n\n"
+        "• 🔴 Liquidações de posições LONG\n"
+        "• 🟢 Liquidações de posições SHORT\n"
+        "• 📊 Volume de liquidações por ativo\n"
+        "• ⚡ Alertas de grandes liquidações\n\n"
+        "💡 Muitas liquidações LONG = possível fundo local\n"
+        "💡 Muitas liquidações SHORT = possível topo local\n\n"
         "━━━━━━━━━━━━━━━━━━━━━\n\n"
-        "💡 **Dica:** Movimentações grandes para exchanges podem\n"
-        "indicar pressão de venda. Saídas de exchanges podem\n"
-        "indicar acumulação (bullish)."
+        "📱 **Canais no Telegram:**"
     )
     
     keyboard = [
-        [InlineKeyboardButton("🐋 Abrir Whale Alert", url="https://t.me/whale_alert_io")],
+        [InlineKeyboardButton("🐋 Whale Alert", url="https://t.me/whale_alert_io")],
+        [InlineKeyboardButton("💥 Binance Liquidations", url="https://t.me/BinanceLiquidations")],
         [InlineKeyboardButton("🔙 Voltar ao Menu", callback_data="menu")],
     ]
     
@@ -710,7 +717,7 @@ async def handle_set_check_interval(query, telegram_id: int):
         user_repo = UserRepository(session)
         user = await user_repo.get_by_telegram_id(telegram_id)
     
-    current_interval = user.check_interval_minutes if user else 5
+    current_interval = getattr(user, 'check_interval_minutes', 5) if user else 5
     
     interval_text = {
         5: "⚡ 5 minutos",
