@@ -8,7 +8,7 @@ from telegram.error import BadRequest
 from datetime import datetime
 
 from src.database import get_async_session, UserRepository, AssetRepository, AlertRepository, EntryRepository
-from src.database.repositories import FuturesRepository, AdminRepository
+from src.database.repositories import FuturesRepository, AdminRepository, ReserveRepository
 from src.services.tradingview_service import TradingViewService
 from src.services.technical_analysis import TechnicalAnalysisService
 from src.services.trend_analysis_service import trend_analysis_service, TrendDirection
@@ -68,6 +68,8 @@ async def callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await handle_my_profile_data(query, user.id)
         elif data == "reserve_status":
             await handle_reserve_status(query, user.id)
+        elif data == "reserve_history":
+            await handle_reserve_history(query, user.id)
         elif data == "add_usdt":
             await handle_add_usdt(query, context)
         elif data == "technical_menu":
@@ -793,6 +795,7 @@ async def handle_reserve_status(query, telegram_id: int):
     async with get_async_session() as session:
         user_repo = UserRepository(session)
         asset_repo = AssetRepository(session)
+        reserve_repo = ReserveRepository(session)
         
         user = await user_repo.get_by_telegram_id(telegram_id)
         if not user:
@@ -803,6 +806,7 @@ async def handle_reserve_status(query, telegram_id: int):
             return
         
         assets = await asset_repo.get_user_assets(user.id)
+        reserve_summary = await reserve_repo.get_allocations_summary(user.id)
     
     # Calculate portfolio and reserve
     total_value = 0
@@ -832,17 +836,48 @@ async def handle_reserve_status(query, telegram_id: int):
         status_emoji = "🔴"
         status_text = "Reserva crítica"
     
+    # Build recent allocations text
+    allocations_text = ""
+    recent_allocations = reserve_summary.get('recent_allocations', [])
+    if recent_allocations:
+        allocations_text = "\n\n📋 **Últimas Movimentações:**\n"
+        type_emojis = {
+            "deposit": "💵",
+            "new_asset": "🛒",
+            "average_down": "📉",
+            "withdrawal": "💸"
+        }
+        type_labels = {
+            "deposit": "Depósito",
+            "new_asset": "Nova compra",
+            "average_down": "Preço médio",
+            "withdrawal": "Retirada"
+        }
+        for alloc in recent_allocations[:5]:  # Show last 5
+            emoji = type_emojis.get(alloc.allocation_type, "📌")
+            label = type_labels.get(alloc.allocation_type, alloc.allocation_type)
+            symbol = f" → {alloc.asset_symbol}" if alloc.asset_symbol and alloc.allocation_type != "deposit" else ""
+            date_str = alloc.created_at.strftime("%d/%m") if alloc.created_at else ""
+            allocations_text += f"{emoji} {label}{symbol}: U$ {alloc.amount:,.2f} ({date_str})\n"
+    
     message = (
-        f"💵 **Status da Reserva**\n\n"
-        f"📊 **Portfólio Total:** ${total_value:,.2f}\n"
-        f"💰 **Reserva em Stablecoins:** ${stablecoin_value:,.2f}\n"
-        f"📈 **Percentual Atual:** {reserve_percent:.1f}%\n"
-        f"🎯 **Meta Configurada:** {target_percent:.1f}%\n\n"
-        f"{status_emoji} **Status:** {status_text}"
+        f"💵 **Caixa de Oportunidades**\n\n"
+        f"📊 **Portfólio Total:** U$ {total_value:,.2f}\n"
+        f"💰 **Reserva Atual:** U$ {stablecoin_value:,.2f}\n"
+        f"📈 **Percentual:** {reserve_percent:.1f}%\n"
+        f"🎯 **Meta:** {target_percent:.1f}%\n\n"
+        f"{status_emoji} **Status:** {status_text}\n\n"
+        f"\u2796\u2796\u2796\u2796\u2796\u2796\u2796\u2796\u2796\u2796\n\n"
+        f"📊 **Resumo das Alocações:**\n"
+        f"💵 Total depositado: U$ {reserve_summary['total_deposited']:,.2f}\n"
+        f"🛒 Investido em ativos: U$ {reserve_summary['total_invested']:,.2f}\n"
+        f"💰 Disponível: U$ {reserve_summary['available_reserve']:,.2f}"
+        f"{allocations_text}"
     )
     
     keyboard = [
         [InlineKeyboardButton("💵 Adicionar USDT", callback_data="add_usdt")],
+        [InlineKeyboardButton("📜 Ver Histórico", callback_data="reserve_history")],
         [InlineKeyboardButton("⚙️ Alterar Meta", callback_data="set_reserve_target")],
         [InlineKeyboardButton("🔙 Voltar ao Menu", callback_data="menu")]
     ]
@@ -866,6 +901,80 @@ async def handle_add_usdt(query, context: ContextTypes.DEFAULT_TYPE):
         "💵 **Adicionar USDT**\n\n"
         "Digite a **quantidade** de USDT que você possui:",
         reply_markup=KeyboardBuilder.cancel_action(),
+        parse_mode=ParseMode.MARKDOWN
+    )
+
+
+async def handle_reserve_history(query, telegram_id: int):
+    """Handle reserve allocation history callback."""
+    async with get_async_session() as session:
+        user_repo = UserRepository(session)
+        reserve_repo = ReserveRepository(session)
+        
+        user = await user_repo.get_by_telegram_id(telegram_id)
+        if not user:
+            await query.edit_message_text(
+                "❌ Usuário não encontrado.",
+                reply_markup=KeyboardBuilder.back_to_menu()
+            )
+            return
+        
+        allocations = await reserve_repo.get_user_allocations(user.id, limit=15)
+    
+    if not allocations:
+        await query.edit_message_text(
+            "📜 **Histórico de Alocações**\n\n"
+            "Nenhuma movimentação registrada ainda.\n\n"
+            "💡 Adicione USDT à sua reserva para começar!",
+            reply_markup=InlineKeyboardMarkup([
+                [InlineKeyboardButton("💵 Adicionar USDT", callback_data="add_usdt")],
+                [InlineKeyboardButton("🔙 Voltar", callback_data="reserve_status")]
+            ]),
+            parse_mode=ParseMode.MARKDOWN
+        )
+        return
+    
+    # Build allocations list
+    type_emojis = {
+        "deposit": "💵",
+        "new_asset": "🛒",
+        "average_down": "📉",
+        "withdrawal": "💸"
+    }
+    type_labels = {
+        "deposit": "Depósito",
+        "new_asset": "Nova compra",
+        "average_down": "Preço médio",
+        "withdrawal": "Retirada"
+    }
+    
+    message = "📜 **Histórico de Alocações**\n\n"
+    
+    for alloc in allocations:
+        emoji = type_emojis.get(alloc.allocation_type, "📌")
+        label = type_labels.get(alloc.allocation_type, alloc.allocation_type)
+        date_str = alloc.created_at.strftime("%d/%m/%Y %H:%M") if alloc.created_at else "N/A"
+        
+        if alloc.allocation_type == "deposit":
+            message += f"{emoji} **{label}**\n"
+            message += f"   💰 U$ {alloc.amount:,.2f}\n"
+        else:
+            symbol = alloc.asset_symbol or "N/A"
+            price = alloc.asset_price or 0
+            qty = alloc.asset_quantity or 0
+            message += f"{emoji} **{label}** → {symbol}\n"
+            message += f"   💰 U$ {alloc.amount:,.2f} | {qty:,.4f} @ U$ {price:,.4f}\n"
+        
+        message += f"   📅 {date_str}\n\n"
+    
+    keyboard = [
+        [InlineKeyboardButton("🔙 Voltar", callback_data="reserve_status")],
+        [InlineKeyboardButton("🏠 Menu", callback_data="menu")]
+    ]
+    
+    await query.edit_message_text(
+        message,
+        reply_markup=InlineKeyboardMarkup(keyboard),
         parse_mode=ParseMode.MARKDOWN
     )
 
@@ -1799,10 +1908,15 @@ async def handle_confirm_add(query, context: ContextTypes.DEFAULT_TYPE, telegram
         context.user_data.clear()
         return
     
+    # Check if this is a stablecoin (reserve)
+    stablecoins = ["USDT", "USDC", "BUSD", "DAI", "TUSD"]
+    is_stablecoin = symbol.upper() in stablecoins
+    
     async with get_async_session() as session:
         user_repo = UserRepository(session)
         asset_repo = AssetRepository(session)
         entry_repo = EntryRepository(session)
+        reserve_repo = ReserveRepository(session)
         
         user = await user_repo.get_by_telegram_id(telegram_id)
         if not user:
@@ -1825,18 +1939,62 @@ async def handle_confirm_add(query, context: ContextTypes.DEFAULT_TYPE, telegram
             new_qty = existing.quantity + quantity
             await asset_repo.update_asset(existing.id, quantity=new_qty)
             
+            # Register reserve allocation
+            if is_stablecoin:
+                # USDT/Stablecoin deposit to reserve
+                await reserve_repo.create_allocation(
+                    user_id=user.id,
+                    allocation_type="deposit",
+                    amount=total_invested,
+                    asset_id=existing.id,
+                    asset_symbol=symbol.upper(),
+                    asset_quantity=quantity,
+                    asset_price=price,
+                    notes=f"Depósito de {symbol.upper()} na reserva"
+                )
+            else:
+                # Regular asset - average down
+                await reserve_repo.create_allocation(
+                    user_id=user.id,
+                    allocation_type="average_down",
+                    amount=total_invested,
+                    asset_id=existing.id,
+                    asset_symbol=symbol.upper(),
+                    asset_quantity=quantity,
+                    asset_price=price,
+                    notes=f"Preço médio em {symbol.upper()}"
+                )
+            
             context.user_data.clear()
             
-            await query.edit_message_text(
-                f"✅ **Entrada adicionada!**\n\n"
-                f"🪙 **{symbol.upper()}**\n"
-                f"📦 Quantidade adicionada: {quantity:,.6f}\n"
-                f"💰 Preço: ${price:,.6f}\n"
-                f"💸 Investido: ${total_invested:,.2f}\n"
-                f"📊 Quantidade total: {new_qty:,.6f}",
-                reply_markup=KeyboardBuilder.asset_actions(existing.id),
-                parse_mode=ParseMode.MARKDOWN
-            )
+            if is_stablecoin:
+                # Get reserve summary for stablecoins
+                summary = await reserve_repo.get_allocations_summary(user.id)
+                await query.edit_message_text(
+                    f"✅ **Reserva de Caixa Atualizada!**\n\n"
+                    f"💵 **{symbol.upper()}**\n"
+                    f"📦 Quantidade adicionada: {quantity:,.2f}\n"
+                    f"💸 Valor: U$ {total_invested:,.2f}\n"
+                    f"📊 Quantidade total: {new_qty:,.2f}\n\n"
+                    f"\u2796\u2796\u2796\u2796\u2796\u2796\u2796\u2796\u2796\u2796\n\n"
+                    f"📋 **Resumo da Reserva:**\n"
+                    f"💰 Total depositado: U$ {summary['total_deposited']:,.2f}\n"
+                    f"💸 Investido em ativos: U$ {summary['total_invested']:,.2f}\n"
+                    f"💵 Disponível: U$ {summary['available_reserve']:,.2f}",
+                    reply_markup=KeyboardBuilder.asset_actions(existing.id),
+                    parse_mode=ParseMode.MARKDOWN
+                )
+            else:
+                await query.edit_message_text(
+                    f"✅ **Entrada adicionada!**\n\n"
+                    f"🪙 **{symbol.upper()}**\n"
+                    f"📦 Quantidade adicionada: {quantity:,.6f}\n"
+                    f"💰 Preço: U$ {price:,.6f}\n"
+                    f"💸 Investido: U$ {total_invested:,.2f}\n"
+                    f"📊 Quantidade total: {new_qty:,.6f}",
+                    reply_markup=KeyboardBuilder.asset_actions(existing.id),
+                    parse_mode=ParseMode.MARKDOWN
+                )
             return
         
         # Create new asset
@@ -1858,18 +2016,59 @@ async def handle_confirm_add(query, context: ContextTypes.DEFAULT_TYPE, telegram
             total_value=total_invested,
             notes="Entrada inicial"
         )
+        
+        # Register reserve allocation
+        if is_stablecoin:
+            # USDT/Stablecoin deposit to reserve
+            await reserve_repo.create_allocation(
+                user_id=user.id,
+                allocation_type="deposit",
+                amount=total_invested,
+                asset_id=asset.id,
+                asset_symbol=symbol.upper(),
+                asset_quantity=quantity,
+                asset_price=price,
+                notes=f"Depósito inicial de {symbol.upper()} na reserva"
+            )
+        else:
+            # New asset purchase
+            await reserve_repo.create_allocation(
+                user_id=user.id,
+                allocation_type="new_asset",
+                amount=total_invested,
+                asset_id=asset.id,
+                asset_symbol=symbol.upper(),
+                asset_quantity=quantity,
+                asset_price=price,
+                notes=f"Compra de {symbol.upper()}"
+            )
     
     context.user_data.clear()
     
-    await query.edit_message_text(
-        f"✅ **Ativo adicionado com sucesso!**\n\n"
-        f"🪙 **{symbol.upper()}** ({name})\n"
-        f"📦 Quantidade: {quantity:,.6f}\n"
-        f"💰 Preço de compra: ${price:,.6f}\n"
-        f"💵 Total investido: ${total_invested:,.2f}",
-        reply_markup=KeyboardBuilder.asset_actions(asset.id),
-        parse_mode=ParseMode.MARKDOWN
-    )
+    if is_stablecoin:
+        await query.edit_message_text(
+            f"✅ **Reserva de Caixa Criada!**\n\n"
+            f"💵 **{symbol.upper()}** ({name})\n"
+            f"📦 Quantidade: {quantity:,.2f}\n"
+            f"💸 Total: U$ {total_invested:,.2f}\n\n"
+            f"\u2796\u2796\u2796\u2796\u2796\u2796\u2796\u2796\u2796\u2796\n\n"
+            f"💡 Esta reserva será usada para:\n"
+            f"• Comprar novos ativos\n"
+            f"• Fazer preço médio em quedas\n"
+            f"• Aproveitar oportunidades",
+            reply_markup=KeyboardBuilder.asset_actions(asset.id),
+            parse_mode=ParseMode.MARKDOWN
+        )
+    else:
+        await query.edit_message_text(
+            f"✅ **Ativo adicionado com sucesso!**\n\n"
+            f"🪙 **{symbol.upper()}** ({name})\n"
+            f"📦 Quantidade: {quantity:,.6f}\n"
+            f"💰 Preço de compra: U$ {price:,.6f}\n"
+            f"💵 Total investido: U$ {total_invested:,.2f}",
+            reply_markup=KeyboardBuilder.asset_actions(asset.id),
+            parse_mode=ParseMode.MARKDOWN
+        )
 
 
 async def handle_correct_price(query, context: ContextTypes.DEFAULT_TYPE):

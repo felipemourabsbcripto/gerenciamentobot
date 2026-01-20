@@ -72,6 +72,20 @@ NEW_TABLES = [
         created_at DATETIME DEFAULT CURRENT_TIMESTAMP
     )
     """,
+    """
+    CREATE TABLE IF NOT EXISTS reserve_allocations (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        user_id INTEGER NOT NULL REFERENCES users(id),
+        asset_id INTEGER REFERENCES assets(id),
+        allocation_type VARCHAR(50) NOT NULL,
+        amount FLOAT NOT NULL,
+        asset_symbol VARCHAR(20),
+        asset_quantity FLOAT,
+        asset_price FLOAT,
+        notes TEXT,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    )
+    """,
 ]
 
 

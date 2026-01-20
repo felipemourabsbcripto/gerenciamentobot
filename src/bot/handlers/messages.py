@@ -560,25 +560,44 @@ async def handle_total_invested_input(update: Update, context: ContextTypes.DEFA
     context.user_data['quantity'] = quantity
     context.user_data['state'] = None
     
-    # Calculate current value and profit/loss
-    current_value = quantity * current_price
-    profit_loss = current_value - total_invested
-    profit_percent = (profit_loss / total_invested * 100) if total_invested > 0 else 0
-    pl_emoji = "🟢" if profit_loss >= 0 else "🔴"
+    # Check if this is a stablecoin (USDT reserve)
+    stablecoins = ["USDT", "USDC", "BUSD", "DAI", "TUSD"]
+    is_stablecoin = symbol.upper() in stablecoins
     
-    # Show confirmation with option to correct
-    message = (
-        f"📋 **Resumo do Ativo**\n\n"
-        f"🪙 **{symbol.upper()}** ({name})\n\n"
-        f"💵 **Preço de Compra:** U$ {format_us_price(price)}\n"
-        f"💸 **Total Investido:** U$ {format_us_price(total_invested)}\n"
-        f"📦 **Quantidade:** {quantity:,.6f} _(calculado)_\n\n"
-        f"\u2796\u2796\u2796\u2796\u2796\u2796\u2796\u2796\u2796\u2796\n\n"
-        f"📊 **Preço Atual:** U$ {format_us_price(current_price)}\n"
-        f"📈 **Valorização do investimento inicial:** U$ {format_us_price(current_value)}\n"
-        f"{pl_emoji} **Lucro/Prejuízo:** U$ {format_us_price(profit_loss)} ({profit_percent:+.2f}%)\n\n"
-        f"Confirma ou deseja corrigir algum dado?"
-    )
+    if is_stablecoin:
+        # Special display for stablecoins (reserve) - simplified view
+        message = (
+            f"💵 **Reserva de Caixa**\n\n"
+            f"🪙 **{symbol.upper()}** ({name})\n\n"
+            f"💸 **Total Investido:** U$ {format_us_price(total_invested)}\n"
+            f"📦 **Quantidade:** {quantity:,.2f} {symbol.upper()}\n\n"
+            f"\u2796\u2796\u2796\u2796\u2796\u2796\u2796\u2796\u2796\u2796\n\n"
+            f"💡 **Reserva de caixa para novos investimentos**\n\n"
+            f"Esta reserva será utilizada para:\n"
+            f"• Comprar novos ativos\n"
+            f"• Fazer preço médio em quedas\n"
+            f"• Aproveitar oportunidades de mercado\n\n"
+            f"Confirma ou deseja corrigir algum dado?"
+        )
+    else:
+        # Standard display for regular assets
+        current_value = quantity * current_price
+        profit_loss = current_value - total_invested
+        profit_percent = (profit_loss / total_invested * 100) if total_invested > 0 else 0
+        pl_emoji = "🟢" if profit_loss >= 0 else "🔴"
+        
+        message = (
+            f"📋 **Resumo do Ativo**\n\n"
+            f"🪙 **{symbol.upper()}** ({name})\n\n"
+            f"💵 **Preço de Compra:** U$ {format_us_price(price)}\n"
+            f"💸 **Total Investido:** U$ {format_us_price(total_invested)}\n"
+            f"📦 **Quantidade:** {quantity:,.6f} _(calculado)_\n\n"
+            f"\u2796\u2796\u2796\u2796\u2796\u2796\u2796\u2796\u2796\u2796\n\n"
+            f"📊 **Preço Atual:** U$ {format_us_price(current_price)}\n"
+            f"📈 **Valorização do investimento inicial:** U$ {format_us_price(current_value)}\n"
+            f"{pl_emoji} **Lucro/Prejuízo:** U$ {format_us_price(profit_loss)} ({profit_percent:+.2f}%)\n\n"
+            f"Confirma ou deseja corrigir algum dado?"
+        )
     
     await update.message.reply_text(
         message,
