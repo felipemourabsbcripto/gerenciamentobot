@@ -24,10 +24,10 @@ class KeyboardBuilder:
             ],
             [
                 InlineKeyboardButton("➕ Adicionar Ativo", callback_data="add_asset"),
-                InlineKeyboardButton("🔍 Buscar Moeda", callback_data="search_coin"),
+                InlineKeyboardButton("🔎 Analisar Ativo", callback_data="analyze_asset"),
             ],
             [
-                InlineKeyboardButton("🐋 Whale Alert", callback_data="whale_alert"),
+                InlineKeyboardButton("🔔 Alertas Gorni", callback_data="whale_alert"),
                 InlineKeyboardButton("💵 Gorni Reserva", callback_data="reserve_status"),
             ],
             [
@@ -70,6 +70,39 @@ class KeyboardBuilder:
             [InlineKeyboardButton("🕑 30 minutos", callback_data="interval_30")],
             [InlineKeyboardButton("🕐 1 hora", callback_data="interval_60")],
             [InlineKeyboardButton("🔙 Voltar", callback_data="settings")],
+        ]
+        return InlineKeyboardMarkup(keyboard)
+
+    @staticmethod
+    def analyze_asset_timeframe() -> InlineKeyboardMarkup:
+        """Create timeframe selection keyboard for asset analysis."""
+        keyboard = [
+            [
+                InlineKeyboardButton("5m", callback_data="analyze_tf_5m"),
+                InlineKeyboardButton("15m", callback_data="analyze_tf_15m"),
+                InlineKeyboardButton("30m", callback_data="analyze_tf_30m"),
+            ],
+            [
+                InlineKeyboardButton("1H", callback_data="analyze_tf_1h"),
+                InlineKeyboardButton("4H", callback_data="analyze_tf_4h"),
+                InlineKeyboardButton("1D", callback_data="analyze_tf_1d"),
+            ],
+            [
+                InlineKeyboardButton("1W", callback_data="analyze_tf_1w"),
+                InlineKeyboardButton("1M", callback_data="analyze_tf_1M"),
+            ],
+            [InlineKeyboardButton("❌ Cancelar", callback_data="menu")],
+        ]
+        return InlineKeyboardMarkup(keyboard)
+
+    @staticmethod
+    def analyze_result_actions(symbol: str) -> InlineKeyboardMarkup:
+        """Create actions keyboard after analysis result."""
+        keyboard = [
+            [InlineKeyboardButton("🔄 Analisar Outro Tempo", callback_data=f"analyze_change_tf_{symbol}")],
+            [InlineKeyboardButton("📈 Abrir Trade Futuros", callback_data="futures_add")],
+            [InlineKeyboardButton("➕ Adicionar à Carteira", callback_data="add_asset")],
+            [InlineKeyboardButton("🔙 Voltar ao Menu", callback_data="menu")],
         ]
         return InlineKeyboardMarkup(keyboard)
 

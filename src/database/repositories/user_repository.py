@@ -151,7 +151,8 @@ class UserRepository:
         full_name: str,
         phone: str,
         birth_date: str,
-        futures_balance: float = 0.0
+        futures_balance: float = 0.0,
+        referral: str = None
     ) -> Optional[User]:
         """Complete user registration with required info."""
         user = await self.get_by_telegram_id(telegram_id)
@@ -168,6 +169,7 @@ class UserRepository:
         user.phone = phone
         user.birth_date = birth_date
         user.futures_balance = futures_balance
+        user.referral = referral
         user.is_registered = True
         user.registration_number = max_num + 1
         

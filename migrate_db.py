@@ -27,6 +27,10 @@ USER_COLUMNS = [
     ("banned_by", "INTEGER"),
     ("invited_by", "INTEGER"),
     ("invite_code", "VARCHAR(50)"),
+    ("referral", "VARCHAR(255)"),  # Quem indicou o usuário
+    # Configurações de alertas personalizados
+    ("price_alerts_enabled", "BOOLEAN DEFAULT 1"),
+    ("check_interval_minutes", "INTEGER DEFAULT 5"),
 ]
 
 # New columns to add to futures_trades table
@@ -66,6 +70,20 @@ NEW_TABLES = [
         action VARCHAR(100) NOT NULL,
         target_user_id INTEGER,
         details TEXT,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    )
+    """,
+    """
+    CREATE TABLE IF NOT EXISTS reserve_allocations (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        user_id INTEGER NOT NULL REFERENCES users(id),
+        asset_id INTEGER REFERENCES assets(id),
+        allocation_type VARCHAR(50) NOT NULL,
+        amount FLOAT NOT NULL,
+        asset_symbol VARCHAR(20),
+        asset_quantity FLOAT,
+        asset_price FLOAT,
+        notes TEXT,
         created_at DATETIME DEFAULT CURRENT_TIMESTAMP
     )
     """,

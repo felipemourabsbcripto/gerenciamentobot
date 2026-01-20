@@ -7,5 +7,6 @@ from src.database.repositories.alert_repository import AlertRepository
 from src.database.repositories.entry_repository import EntryRepository
 from src.database.repositories.futures_repository import FuturesRepository
 from src.database.repositories.admin_repository import AdminRepository
+from src.database.repositories.reserve_repository import ReserveRepository
 
-__all__ = ["UserRepository", "AssetRepository", "AlertRepository", "EntryRepository", "FuturesRepository", "AdminRepository"]
+__all__ = ["UserRepository", "AssetRepository", "AlertRepository", "EntryRepository", "FuturesRepository", "AdminRepository", "ReserveRepository"]

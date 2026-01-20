@@ -8,7 +8,7 @@ from telegram.error import BadRequest
 from datetime import datetime
 
 from src.database import get_async_session, UserRepository, AssetRepository, AlertRepository, EntryRepository
-from src.database.repositories import FuturesRepository, AdminRepository
+from src.database.repositories import FuturesRepository, AdminRepository, ReserveRepository
 from src.services.tradingview_service import TradingViewService
 from src.services.technical_analysis import TechnicalAnalysisService
 from src.services.trend_analysis_service import trend_analysis_service, TrendDirection
@@ -41,6 +41,14 @@ async def callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await handle_add_asset(query, context)
         elif data == "search_coin":
             await handle_search_coin(query, context)
+        elif data == "analyze_asset":
+            await handle_analyze_asset(query, context)
+        elif data.startswith("analyze_tf_"):
+            timeframe = data.replace("analyze_tf_", "")
+            await handle_analyze_timeframe(query, context, timeframe)
+        elif data.startswith("analyze_change_tf_"):
+            symbol = data.replace("analyze_change_tf_", "")
+            await handle_analyze_change_timeframe(query, context, symbol)
         elif data == "whale_alert":
             await handle_whale_alert(query)
         elif data == "settings":
@@ -68,6 +76,8 @@ async def callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await handle_my_profile_data(query, user.id)
         elif data == "reserve_status":
             await handle_reserve_status(query, user.id)
+        elif data == "reserve_history":
+            await handle_reserve_history(query, user.id)
         elif data == "add_usdt":
             await handle_add_usdt(query, context)
         elif data == "technical_menu":
@@ -384,29 +394,45 @@ async def handle_search_coin(query, context: ContextTypes.DEFAULT_TYPE):
 
 
 async def handle_whale_alert(query):
-    """Handle whale alert callback - Show info about Whale Alert channel."""
+    """Handle whale alert callback - Show info about Gorni Alerts (Whale Alert + Liquidations + Fear & Greed)."""
     message = (
-        "🐋 **Whale Alert**\n\n"
-        "Acompanhe movimentações de grandes baleias em tempo real!\n\n"
-        "O Whale Alert monitora transações massivas de criptomoedas:\n\n"
+        "🔔 **Alertas Gorni**\n\n"
+        "Acompanhe movimentações importantes do mercado em tempo real!\n\n"
+        "━━━━━━━━━━━━━━━━━━━━━\n\n"
+        "🐋 **WHALE ALERT**\n"
+        "Monitora transações massivas de criptomoedas:\n\n"
         "• 💰 Transferências milionárias de BTC, ETH, USDT\n"
         "• 🏦 Depósitos/Saques em exchanges\n"
         "• 🔥 Burns de tokens\n"
         "• 🆕 Mint de stablecoins\n"
         "• 🔒 Movimentações de carteiras dormentes\n\n"
+        "💡 Movimentações para exchanges = pressão de venda\n"
+        "💡 Saídas de exchanges = acumulação (bullish)\n\n"
         "━━━━━━━━━━━━━━━━━━━━━\n\n"
-        "📱 **Canal oficial no Telegram:**\n"
-        "👉 [Whale Alert](https://t.me/whale_alert_io)\n\n"
-        "🌐 **Site oficial:**\n"
-        "👉 [whale-alert.io](https://whale-alert.io)\n\n"
+        "💥 **LIQUIDAÇÕES BINANCE**\n"
+        "Monitora liquidações em tempo real:\n\n"
+        "• 🔴 Liquidações de posições LONG\n"
+        "• 🟢 Liquidações de posições SHORT\n"
+        "• 📊 Volume de liquidações por ativo\n"
+        "• ⚡ Alertas de grandes liquidações\n\n"
+        "💡 Muitas liquidações LONG = possível fundo local\n"
+        "💡 Muitas liquidações SHORT = possível topo local\n\n"
         "━━━━━━━━━━━━━━━━━━━━━\n\n"
-        "💡 **Dica:** Movimentações grandes para exchanges podem\n"
-        "indicar pressão de venda. Saídas de exchanges podem\n"
-        "indicar acumulação (bullish)."
+        "😱 **FEAR & GREED INDEX**\n"
+        "Índice de Medo e Ganância do mercado crypto:\n\n"
+        "• 🔴 0-24: Medo Extremo (oportunidade de compra)\n"
+        "• 🟠 25-49: Medo\n"
+        "• 🟡 50-74: Ganância\n"
+        "• 🟢 75-100: Ganância Extrema (cautela)\n\n"
+        "💡 \"Compre quando há medo, venda quando há ganância\"\n\n"
+        "━━━━━━━━━━━━━━━━━━━━━\n\n"
+        "📱 **Links úteis:**"
     )
     
     keyboard = [
-        [InlineKeyboardButton("🐋 Abrir Whale Alert", url="https://t.me/whale_alert_io")],
+        [InlineKeyboardButton("🐋 Whale Alert", url="https://t.me/whale_alert_io")],
+        [InlineKeyboardButton("💥 Binance Liquidations", url="https://t.me/BinanceLiquidations")],
+        [InlineKeyboardButton("😱 Fear & Greed Index", url="https://alternative.me/crypto/fear-and-greed-index/")],
         [InlineKeyboardButton("🔙 Voltar ao Menu", callback_data="menu")],
     ]
     
@@ -710,7 +736,7 @@ async def handle_set_check_interval(query, telegram_id: int):
         user_repo = UserRepository(session)
         user = await user_repo.get_by_telegram_id(telegram_id)
     
-    current_interval = user.check_interval_minutes if user else 5
+    current_interval = getattr(user, 'check_interval_minutes', 5) if user else 5
     
     interval_text = {
         5: "⚡ 5 minutos",
@@ -777,6 +803,7 @@ async def handle_reserve_status(query, telegram_id: int):
     async with get_async_session() as session:
         user_repo = UserRepository(session)
         asset_repo = AssetRepository(session)
+        reserve_repo = ReserveRepository(session)
         
         user = await user_repo.get_by_telegram_id(telegram_id)
         if not user:
@@ -787,6 +814,7 @@ async def handle_reserve_status(query, telegram_id: int):
             return
         
         assets = await asset_repo.get_user_assets(user.id)
+        reserve_summary = await reserve_repo.get_allocations_summary(user.id)
     
     # Calculate portfolio and reserve
     total_value = 0
@@ -816,17 +844,48 @@ async def handle_reserve_status(query, telegram_id: int):
         status_emoji = "🔴"
         status_text = "Reserva crítica"
     
+    # Build recent allocations text
+    allocations_text = ""
+    recent_allocations = reserve_summary.get('recent_allocations', [])
+    if recent_allocations:
+        allocations_text = "\n\n📋 **Últimas Movimentações:**\n"
+        type_emojis = {
+            "deposit": "💵",
+            "new_asset": "🛒",
+            "average_down": "📉",
+            "withdrawal": "💸"
+        }
+        type_labels = {
+            "deposit": "Depósito",
+            "new_asset": "Nova compra",
+            "average_down": "Preço médio",
+            "withdrawal": "Retirada"
+        }
+        for alloc in recent_allocations[:5]:  # Show last 5
+            emoji = type_emojis.get(alloc.allocation_type, "📌")
+            label = type_labels.get(alloc.allocation_type, alloc.allocation_type)
+            symbol = f" → {alloc.asset_symbol}" if alloc.asset_symbol and alloc.allocation_type != "deposit" else ""
+            date_str = alloc.created_at.strftime("%d/%m") if alloc.created_at else ""
+            allocations_text += f"{emoji} {label}{symbol}: U$ {alloc.amount:,.2f} ({date_str})\n"
+    
     message = (
-        f"💵 **Status da Reserva**\n\n"
-        f"📊 **Portfólio Total:** ${total_value:,.2f}\n"
-        f"💰 **Reserva em Stablecoins:** ${stablecoin_value:,.2f}\n"
-        f"📈 **Percentual Atual:** {reserve_percent:.1f}%\n"
-        f"🎯 **Meta Configurada:** {target_percent:.1f}%\n\n"
-        f"{status_emoji} **Status:** {status_text}"
+        f"💵 **Caixa de Oportunidades**\n\n"
+        f"📊 **Portfólio Total:** U$ {total_value:,.2f}\n"
+        f"💰 **Reserva Atual:** U$ {stablecoin_value:,.2f}\n"
+        f"📈 **Percentual:** {reserve_percent:.1f}%\n"
+        f"🎯 **Meta:** {target_percent:.1f}%\n\n"
+        f"{status_emoji} **Status:** {status_text}\n\n"
+        f"\u2796\u2796\u2796\u2796\u2796\u2796\u2796\u2796\u2796\u2796\n\n"
+        f"📊 **Resumo das Alocações:**\n"
+        f"💵 Total depositado: U$ {reserve_summary['total_deposited']:,.2f}\n"
+        f"🛒 Investido em ativos: U$ {reserve_summary['total_invested']:,.2f}\n"
+        f"💰 Disponível: U$ {reserve_summary['available_reserve']:,.2f}"
+        f"{allocations_text}"
     )
     
     keyboard = [
         [InlineKeyboardButton("💵 Adicionar USDT", callback_data="add_usdt")],
+        [InlineKeyboardButton("📜 Ver Histórico", callback_data="reserve_history")],
         [InlineKeyboardButton("⚙️ Alterar Meta", callback_data="set_reserve_target")],
         [InlineKeyboardButton("🔙 Voltar ao Menu", callback_data="menu")]
     ]
@@ -850,6 +909,80 @@ async def handle_add_usdt(query, context: ContextTypes.DEFAULT_TYPE):
         "💵 **Adicionar USDT**\n\n"
         "Digite a **quantidade** de USDT que você possui:",
         reply_markup=KeyboardBuilder.cancel_action(),
+        parse_mode=ParseMode.MARKDOWN
+    )
+
+
+async def handle_reserve_history(query, telegram_id: int):
+    """Handle reserve allocation history callback."""
+    async with get_async_session() as session:
+        user_repo = UserRepository(session)
+        reserve_repo = ReserveRepository(session)
+        
+        user = await user_repo.get_by_telegram_id(telegram_id)
+        if not user:
+            await query.edit_message_text(
+                "❌ Usuário não encontrado.",
+                reply_markup=KeyboardBuilder.back_to_menu()
+            )
+            return
+        
+        allocations = await reserve_repo.get_user_allocations(user.id, limit=15)
+    
+    if not allocations:
+        await query.edit_message_text(
+            "📜 **Histórico de Alocações**\n\n"
+            "Nenhuma movimentação registrada ainda.\n\n"
+            "💡 Adicione USDT à sua reserva para começar!",
+            reply_markup=InlineKeyboardMarkup([
+                [InlineKeyboardButton("💵 Adicionar USDT", callback_data="add_usdt")],
+                [InlineKeyboardButton("🔙 Voltar", callback_data="reserve_status")]
+            ]),
+            parse_mode=ParseMode.MARKDOWN
+        )
+        return
+    
+    # Build allocations list
+    type_emojis = {
+        "deposit": "💵",
+        "new_asset": "🛒",
+        "average_down": "📉",
+        "withdrawal": "💸"
+    }
+    type_labels = {
+        "deposit": "Depósito",
+        "new_asset": "Nova compra",
+        "average_down": "Preço médio",
+        "withdrawal": "Retirada"
+    }
+    
+    message = "📜 **Histórico de Alocações**\n\n"
+    
+    for alloc in allocations:
+        emoji = type_emojis.get(alloc.allocation_type, "📌")
+        label = type_labels.get(alloc.allocation_type, alloc.allocation_type)
+        date_str = alloc.created_at.strftime("%d/%m/%Y %H:%M") if alloc.created_at else "N/A"
+        
+        if alloc.allocation_type == "deposit":
+            message += f"{emoji} **{label}**\n"
+            message += f"   💰 U$ {alloc.amount:,.2f}\n"
+        else:
+            symbol = alloc.asset_symbol or "N/A"
+            price = alloc.asset_price or 0
+            qty = alloc.asset_quantity or 0
+            message += f"{emoji} **{label}** → {symbol}\n"
+            message += f"   💰 U$ {alloc.amount:,.2f} | {qty:,.4f} @ U$ {price:,.4f}\n"
+        
+        message += f"   📅 {date_str}\n\n"
+    
+    keyboard = [
+        [InlineKeyboardButton("🔙 Voltar", callback_data="reserve_status")],
+        [InlineKeyboardButton("🏠 Menu", callback_data="menu")]
+    ]
+    
+    await query.edit_message_text(
+        message,
+        reply_markup=InlineKeyboardMarkup(keyboard),
         parse_mode=ParseMode.MARKDOWN
     )
 
@@ -1783,10 +1916,15 @@ async def handle_confirm_add(query, context: ContextTypes.DEFAULT_TYPE, telegram
         context.user_data.clear()
         return
     
+    # Check if this is a stablecoin (reserve)
+    stablecoins = ["USDT", "USDC", "BUSD", "DAI", "TUSD"]
+    is_stablecoin = symbol.upper() in stablecoins
+    
     async with get_async_session() as session:
         user_repo = UserRepository(session)
         asset_repo = AssetRepository(session)
         entry_repo = EntryRepository(session)
+        reserve_repo = ReserveRepository(session)
         
         user = await user_repo.get_by_telegram_id(telegram_id)
         if not user:
@@ -1809,18 +1947,62 @@ async def handle_confirm_add(query, context: ContextTypes.DEFAULT_TYPE, telegram
             new_qty = existing.quantity + quantity
             await asset_repo.update_asset(existing.id, quantity=new_qty)
             
+            # Register reserve allocation
+            if is_stablecoin:
+                # USDT/Stablecoin deposit to reserve
+                await reserve_repo.create_allocation(
+                    user_id=user.id,
+                    allocation_type="deposit",
+                    amount=total_invested,
+                    asset_id=existing.id,
+                    asset_symbol=symbol.upper(),
+                    asset_quantity=quantity,
+                    asset_price=price,
+                    notes=f"Depósito de {symbol.upper()} na reserva"
+                )
+            else:
+                # Regular asset - average down
+                await reserve_repo.create_allocation(
+                    user_id=user.id,
+                    allocation_type="average_down",
+                    amount=total_invested,
+                    asset_id=existing.id,
+                    asset_symbol=symbol.upper(),
+                    asset_quantity=quantity,
+                    asset_price=price,
+                    notes=f"Preço médio em {symbol.upper()}"
+                )
+            
             context.user_data.clear()
             
-            await query.edit_message_text(
-                f"✅ **Entrada adicionada!**\n\n"
-                f"🪙 **{symbol.upper()}**\n"
-                f"📦 Quantidade adicionada: {quantity:,.6f}\n"
-                f"💰 Preço: ${price:,.6f}\n"
-                f"💸 Investido: ${total_invested:,.2f}\n"
-                f"📊 Quantidade total: {new_qty:,.6f}",
-                reply_markup=KeyboardBuilder.asset_actions(existing.id),
-                parse_mode=ParseMode.MARKDOWN
-            )
+            if is_stablecoin:
+                # Get reserve summary for stablecoins
+                summary = await reserve_repo.get_allocations_summary(user.id)
+                await query.edit_message_text(
+                    f"✅ **Reserva de Caixa Atualizada!**\n\n"
+                    f"💵 **{symbol.upper()}**\n"
+                    f"📦 Quantidade adicionada: {quantity:,.2f}\n"
+                    f"💸 Valor: U$ {total_invested:,.2f}\n"
+                    f"📊 Quantidade total: {new_qty:,.2f}\n\n"
+                    f"\u2796\u2796\u2796\u2796\u2796\u2796\u2796\u2796\u2796\u2796\n\n"
+                    f"📋 **Resumo da Reserva:**\n"
+                    f"💰 Total depositado: U$ {summary['total_deposited']:,.2f}\n"
+                    f"💸 Investido em ativos: U$ {summary['total_invested']:,.2f}\n"
+                    f"💵 Disponível: U$ {summary['available_reserve']:,.2f}",
+                    reply_markup=KeyboardBuilder.asset_actions(existing.id),
+                    parse_mode=ParseMode.MARKDOWN
+                )
+            else:
+                await query.edit_message_text(
+                    f"✅ **Entrada adicionada!**\n\n"
+                    f"🪙 **{symbol.upper()}**\n"
+                    f"📦 Quantidade adicionada: {quantity:,.6f}\n"
+                    f"💰 Preço: U$ {price:,.6f}\n"
+                    f"💸 Investido: U$ {total_invested:,.2f}\n"
+                    f"📊 Quantidade total: {new_qty:,.6f}",
+                    reply_markup=KeyboardBuilder.asset_actions(existing.id),
+                    parse_mode=ParseMode.MARKDOWN
+                )
             return
         
         # Create new asset
@@ -1842,18 +2024,59 @@ async def handle_confirm_add(query, context: ContextTypes.DEFAULT_TYPE, telegram
             total_value=total_invested,
             notes="Entrada inicial"
         )
+        
+        # Register reserve allocation
+        if is_stablecoin:
+            # USDT/Stablecoin deposit to reserve
+            await reserve_repo.create_allocation(
+                user_id=user.id,
+                allocation_type="deposit",
+                amount=total_invested,
+                asset_id=asset.id,
+                asset_symbol=symbol.upper(),
+                asset_quantity=quantity,
+                asset_price=price,
+                notes=f"Depósito inicial de {symbol.upper()} na reserva"
+            )
+        else:
+            # New asset purchase
+            await reserve_repo.create_allocation(
+                user_id=user.id,
+                allocation_type="new_asset",
+                amount=total_invested,
+                asset_id=asset.id,
+                asset_symbol=symbol.upper(),
+                asset_quantity=quantity,
+                asset_price=price,
+                notes=f"Compra de {symbol.upper()}"
+            )
     
     context.user_data.clear()
     
-    await query.edit_message_text(
-        f"✅ **Ativo adicionado com sucesso!**\n\n"
-        f"🪙 **{symbol.upper()}** ({name})\n"
-        f"📦 Quantidade: {quantity:,.6f}\n"
-        f"💰 Preço de compra: ${price:,.6f}\n"
-        f"💵 Total investido: ${total_invested:,.2f}",
-        reply_markup=KeyboardBuilder.asset_actions(asset.id),
-        parse_mode=ParseMode.MARKDOWN
-    )
+    if is_stablecoin:
+        await query.edit_message_text(
+            f"✅ **Reserva de Caixa Criada!**\n\n"
+            f"💵 **{symbol.upper()}** ({name})\n"
+            f"📦 Quantidade: {quantity:,.2f}\n"
+            f"💸 Total: U$ {total_invested:,.2f}\n\n"
+            f"\u2796\u2796\u2796\u2796\u2796\u2796\u2796\u2796\u2796\u2796\n\n"
+            f"💡 Esta reserva será usada para:\n"
+            f"• Comprar novos ativos\n"
+            f"• Fazer preço médio em quedas\n"
+            f"• Aproveitar oportunidades",
+            reply_markup=KeyboardBuilder.asset_actions(asset.id),
+            parse_mode=ParseMode.MARKDOWN
+        )
+    else:
+        await query.edit_message_text(
+            f"✅ **Ativo adicionado com sucesso!**\n\n"
+            f"🪙 **{symbol.upper()}** ({name})\n"
+            f"📦 Quantidade: {quantity:,.6f}\n"
+            f"💰 Preço de compra: U$ {price:,.6f}\n"
+            f"💵 Total investido: U$ {total_invested:,.2f}",
+            reply_markup=KeyboardBuilder.asset_actions(asset.id),
+            parse_mode=ParseMode.MARKDOWN
+        )
 
 
 async def handle_correct_price(query, context: ContextTypes.DEFAULT_TYPE):
@@ -3846,3 +4069,288 @@ async def handle_futures_adjust_stop(query, context: ContextTypes.DEFAULT_TYPE):
         reply_markup=KeyboardBuilder.cancel_action(),
         parse_mode=ParseMode.MARKDOWN
     )
+
+
+# ==================== ANALYZE ASSET HANDLERS ====================
+
+async def handle_analyze_asset(query, context: ContextTypes.DEFAULT_TYPE):
+    """Handle analyze asset button - start asset analysis flow."""
+    context.user_data.clear()
+    context.user_data['state'] = 'awaiting_analyze_symbol'
+    
+    await query.edit_message_text(
+        "🔎 **Analisar Ativo**\n\n"
+        "Digite o símbolo do ativo que deseja analisar:\n\n"
+        "**Formatos aceitos:**\n"
+        "• `BTCUSDT` - Par Spot\n"
+        "• `BTCUSDT.P` - Perpétuo (Futuros)\n"
+        "• `ETHUSDT` ou `ETHUSDT.P`\n"
+        "• `SOLUSDT.P` - Qualquer ativo\n\n"
+        "💡 O `.P` indica contrato perpétuo para futuros.",
+        reply_markup=KeyboardBuilder.cancel_action(),
+        parse_mode=ParseMode.MARKDOWN
+    )
+
+
+async def handle_analyze_timeframe(query, context: ContextTypes.DEFAULT_TYPE, timeframe: str):
+    """Handle timeframe selection for asset analysis."""
+    from src.services.gurugorni_strategies import GorniShadowStrategy, GorniReversalHunter, GorniMomentumRider, GorniFlashScalper
+    from src.services.trend_analysis_service import trend_analysis_service
+    
+    symbol = context.user_data.get('analyze_symbol', 'BTCUSDT')
+    is_perpetual = context.user_data.get('analyze_is_perpetual', False)
+    
+    await query.edit_message_text(
+        f"🔍 Analisando **{symbol}{'`.P`' if is_perpetual else ''}** no timeframe **{timeframe.upper()}**...\n\n"
+        "⏳ Processando indicadores e estratégias...",
+        parse_mode=ParseMode.MARKDOWN
+    )
+    
+    # Get price data using TradingView
+    tv = TradingViewService()
+    current_price = 0
+    price_change = 0
+    try:
+        price_data = await tv.get_price(symbol.replace("USDT", "").replace(".P", ""))
+        if price_data:
+            current_price = price_data.get('price', 0)
+            price_change = price_data.get('change_24h', 0)
+    except Exception as e:
+        logger.warning(f"Could not get price for {symbol}: {e}")
+    finally:
+        await tv.close()
+    
+    # Run trend analysis
+    trend_result = None
+    try:
+        trend_result = await trend_analysis_service.analyze_symbol(
+            symbol.replace("USDT", "").replace(".P", ""),
+            timeframe=timeframe
+        )
+    except Exception as e:
+        logger.warning(f"Trend analysis failed for {symbol}: {e}")
+    
+    # Determine best strategy based on timeframe and market conditions
+    strategy_recommendation = _select_strategy_for_analysis(timeframe, trend_result, price_change)
+    
+    # Build analysis message
+    pair_type = "🔄 Perpétuo (Futuros)" if is_perpetual else "💱 Spot"
+    price_emoji = "🟢" if price_change >= 0 else "🔴"
+    
+    # Determine trend
+    if trend_result:
+        trend_text = _format_trend_text(trend_result)
+    else:
+        trend_text = "⚠️ Não foi possível determinar tendência"
+    
+    # Risk assessment
+    risk_level, risk_emoji = _assess_risk_level(timeframe, price_change, trend_result)
+    
+    message = (
+        f"📊 **Análise de {symbol}{'`.P`' if is_perpetual else ''}**\n\n"
+        f"📈 **Timeframe:** {timeframe.upper()}\n"
+        f"🏷️ **Tipo:** {pair_type}\n\n"
+        f"\u2796\u2796\u2796\u2796\u2796\u2796\u2796\u2796\u2796\u2796\n\n"
+        f"💵 **Preço Atual:** U$ {current_price:,.4f}\n"
+        f"{price_emoji} **Variação 24h:** {price_change:+.2f}%\n\n"
+        f"\u2796\u2796\u2796\u2796\u2796\u2796\u2796\u2796\u2796\u2796\n\n"
+        f"📉 **Tendência:**\n{trend_text}\n\n"
+        f"\u2796\u2796\u2796\u2796\u2796\u2796\u2796\u2796\u2796\u2796\n\n"
+        f"{risk_emoji} **Nível de Risco:** {risk_level}\n\n"
+        f"\u2796\u2796\u2796\u2796\u2796\u2796\u2796\u2796\u2796\u2796\n\n"
+        f"🧠 **Estratégia Recomendada:**\n{strategy_recommendation}\n\n"
+        f"\u2796\u2796\u2796\u2796\u2796\u2796\u2796\u2796\u2796\u2796\n\n"
+        f"💡 **Projeção ({timeframe.upper()}):**\n"
+        f"{_generate_projection(trend_result, current_price, timeframe)}"
+    )
+    
+    context.user_data['analyze_symbol'] = symbol
+    context.user_data['analyze_timeframe'] = timeframe
+    
+    await query.edit_message_text(
+        message,
+        reply_markup=KeyboardBuilder.analyze_result_actions(symbol),
+        parse_mode=ParseMode.MARKDOWN
+    )
+
+
+async def handle_analyze_change_timeframe(query, context: ContextTypes.DEFAULT_TYPE, symbol: str):
+    """Allow user to change timeframe for the same symbol."""
+    context.user_data['analyze_symbol'] = symbol
+    
+    await query.edit_message_text(
+        f"⏱️ **Selecione o Tempo Gráfico**\n\n"
+        f"Ativo: **{symbol}**\n\n"
+        f"Escolha o timeframe para análise:",
+        reply_markup=KeyboardBuilder.analyze_asset_timeframe(),
+        parse_mode=ParseMode.MARKDOWN
+    )
+
+
+def _select_strategy_for_analysis(timeframe: str, trend_result, price_change: float) -> str:
+    """Select the best Gorni strategy based on market conditions."""
+    
+    # Short timeframes (5m, 15m) - Flash Scalper
+    if timeframe in ['5m', '15m']:
+        return (
+            "⚡ **Gorni Flash Scalper** (71% acurácia)\n"
+            "• Ideal para scalping rápido\n"
+            "• Entradas e saídas rápidas\n"
+            "• Stop curto, alvos próximos\n"
+            "• Maior número de trades"
+        )
+    
+    # Medium timeframes (30m, 1h) - Momentum Rider
+    elif timeframe in ['30m', '1h']:
+        return (
+            "⚡ **Gorni Momentum Rider** (78% acurácia)\n"
+            "• Surfa tendências em formação\n"
+            "• Acompanha momentum do mercado\n"
+            "• Stop moderado\n"
+            "• Trades de algumas horas"
+        )
+    
+    # Higher timeframes (4h) with down trend - Reversal Hunter
+    elif timeframe == '4h' and price_change < -3:
+        return (
+            "🎯 **Gorni Reversal Hunter** (82% acurácia)\n"
+            "• Detecta fundos e reversões\n"
+            "• Ideal para quedas acentuadas\n"
+            "• Busca pontos de virada\n"
+            "• Trades de swing"
+        )
+    
+    # Higher timeframes (4h, 1d) - Shadow for protection
+    elif timeframe in ['4h', '1d']:
+        if price_change < -5:
+            return (
+                "🛡️ **Gorni Shadow** (85% acurácia)\n"
+                "• Modo de proteção ativado\n"
+                "• Mercado em queda forte\n"
+                "• Aguardar estabilização\n"
+                "• Considerar hedge ou saída"
+            )
+        else:
+            return (
+                "⚡ **Gorni Momentum Rider** (78% acurácia)\n"
+                "• Acompanha tendência dominante\n"
+                "• Entrada em pullbacks\n"
+                "• Trades de swing (dias)\n"
+                "• R:R favorável"
+            )
+    
+    # Weekly/Monthly - Shadow (protection focus)
+    else:
+        return (
+            "🛡️ **Gorni Shadow** (85% acurácia)\n"
+            "• Análise macro do mercado\n"
+            "• Identificação de ciclos\n"
+            "• Proteção de capital\n"
+            "• Posicionamento de longo prazo"
+        )
+
+
+def _format_trend_text(trend_result) -> str:
+    """Format trend analysis result."""
+    if not trend_result:
+        return "⚠️ Dados insuficientes"
+    
+    direction = getattr(trend_result, 'direction', None)
+    strength = getattr(trend_result, 'strength', 0)
+    
+    if direction:
+        dir_text = str(direction).upper()
+        if 'UP' in dir_text or 'BULLISH' in dir_text:
+            emoji = "🟢"
+            trend = "ALTA"
+        elif 'DOWN' in dir_text or 'BEARISH' in dir_text:
+            emoji = "🔴"
+            trend = "BAIXA"
+        else:
+            emoji = "🟡"
+            trend = "LATERAL"
+        
+        strength_text = ""
+        if strength:
+            if strength > 70:
+                strength_text = "Força: FORTE"
+            elif strength > 40:
+                strength_text = "Força: MODERADA"
+            else:
+                strength_text = "Força: FRACA"
+        
+        return f"{emoji} **Tendência de {trend}**\n{strength_text}"
+    
+    return "🟡 **Tendência INDEFINIDA**"
+
+
+def _assess_risk_level(timeframe: str, price_change: float, trend_result) -> tuple:
+    """Assess risk level for the trade."""
+    risk_score = 0
+    
+    # Volatility from price change
+    if abs(price_change) > 10:
+        risk_score += 3
+    elif abs(price_change) > 5:
+        risk_score += 2
+    elif abs(price_change) > 2:
+        risk_score += 1
+    
+    # Shorter timeframes = higher risk
+    if timeframe in ['5m', '15m']:
+        risk_score += 2
+    elif timeframe in ['30m', '1h']:
+        risk_score += 1
+    
+    # Determine risk level
+    if risk_score >= 4:
+        return "ALTO ⚠️", "🔴"
+    elif risk_score >= 2:
+        return "MODERADO", "🟡"
+    else:
+        return "BAIXO", "🟢"
+
+
+def _generate_projection(trend_result, current_price: float, timeframe: str) -> str:
+    """Generate price projection based on analysis."""
+    if not current_price or current_price == 0:
+        return "⚠️ Preço não disponível para projeção"
+    
+    # Simple projection based on timeframe
+    timeframe_multiplier = {
+        '5m': 0.5,
+        '15m': 1.0,
+        '30m': 1.5,
+        '1h': 2.0,
+        '4h': 3.5,
+        '1d': 5.0,
+        '1w': 10.0,
+        '1M': 20.0
+    }
+    
+    multiplier = timeframe_multiplier.get(timeframe, 2.0)
+    
+    # Determine direction from trend
+    direction = 1  # Default bullish
+    if trend_result:
+        dir_text = str(getattr(trend_result, 'direction', '')).upper()
+        if 'DOWN' in dir_text or 'BEARISH' in dir_text:
+            direction = -1
+    
+    # Calculate targets
+    target_1 = current_price * (1 + (0.01 * multiplier * direction))
+    target_2 = current_price * (1 + (0.02 * multiplier * direction))
+    stop_loss = current_price * (1 - (0.015 * multiplier * direction))
+    
+    if direction == 1:
+        return (
+            f"🎯 Alvo 1: U$ {target_1:,.4f} (+{multiplier:.1f}%)\n"
+            f"🎯 Alvo 2: U$ {target_2:,.4f} (+{multiplier*2:.1f}%)\n"
+            f"🛑 Stop sugerido: U$ {stop_loss:,.4f} (-{multiplier*1.5:.1f}%)"
+        )
+    else:
+        return (
+            f"🎯 Alvo 1 (Short): U$ {target_1:,.4f} ({multiplier:.1f}%)\n"
+            f"🎯 Alvo 2 (Short): U$ {target_2:,.4f} ({multiplier*2:.1f}%)\n"
+            f"🛑 Stop sugerido: U$ {stop_loss:,.4f} ({multiplier*1.5:.1f}%)"
+        )

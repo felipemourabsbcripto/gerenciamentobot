@@ -42,14 +42,20 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         # Check if user is fully registered
         if not db_user.is_registered:
             # Start registration flow
-            context.user_data['registration_step'] = 'name'
             context.user_data.clear()
             context.user_data['registration_step'] = 'name'
             
             await update.message.reply_text(
-                "👋 **Bem-vindo ao Gerenciador de risco da comunidade!!**\n\n"
+                "👋 **Bem-vindo ao Gerenciador de risco da comunidade!**\n\n"
+                "⚠️ **ATENÇÃO: Cadastros incompletos serão banidos!**\n\n"
                 "Para usar o bot, você precisa completar seu cadastro.\n\n"
-                "📝 **Etapa 1/4 - Nome Completo**\n\n"
+                "**Dados necessários:**\n"
+                "1️⃣ Nome completo\n"
+                "2️⃣ Telefone (com DDD)\n"
+                "3️⃣ Data de nascimento\n"
+                "4️⃣ Capital para Futuros\n"
+                "5️⃣ Quem te indicou\n\n"
+                "📝 **Etapa 1/5 - Nome Completo**\n\n"
                 "Digite seu **nome completo**:",
                 parse_mode=ParseMode.MARKDOWN
             )

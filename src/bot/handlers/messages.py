@@ -54,6 +54,11 @@ async def message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             )
             return
     
+    # Check for analyze asset state
+    if state == 'awaiting_analyze_symbol':
+        await handle_analyze_symbol_input(update, context, text)
+        return
+    
     # Check for futures-related awaiting states
     if context.user_data.get('awaiting_futures_pair'):
         await handle_futures_pair_input(update, context, text)
@@ -151,7 +156,7 @@ async def handle_registration_input(update: Update, context: ContextTypes.DEFAUL
         
         await update.message.reply_text(
             f"✅ Nome: **{text}**\n\n"
-            "📝 **Etapa 2/4 - Telefone**\n\n"
+            "📝 **Etapa 2/5 - Telefone**\n\n"
             "Digite seu **número de telefone** (com DDD):\n"
             "Exemplo: `11999998888`",
             parse_mode=ParseMode.MARKDOWN
@@ -174,7 +179,7 @@ async def handle_registration_input(update: Update, context: ContextTypes.DEFAUL
         
         await update.message.reply_text(
             f"✅ Telefone: **{phone}**\n\n"
-            "📝 **Etapa 3/4 - Data de Nascimento**\n\n"
+            "📝 **Etapa 3/5 - Data de Nascimento**\n\n"
             "Digite sua **data de nascimento**:\n"
             "Formato: `DD/MM/AAAA`\n"
             "Exemplo: `15/03/1990`",
@@ -214,7 +219,7 @@ async def handle_registration_input(update: Update, context: ContextTypes.DEFAUL
         
         await update.message.reply_text(
             f"✅ Data de nascimento: **{text}**\n\n"
-            "📝 **Etapa 4/4 - Capital para Futuros**\n\n"
+            "📝 **Etapa 4/5 - Capital para Futuros**\n\n"
             "💰 Informe em **USDT** o valor disponível para investir em **Futuros**:\n\n"
             "Este valor será usado para:\n"
             "• Calcular sugestões de exposição\n"
@@ -238,6 +243,28 @@ async def handle_registration_input(update: Update, context: ContextTypes.DEFAUL
             return
         
         context.user_data['reg_futures_balance'] = balance
+        context.user_data['registration_step'] = 'referral'
+        
+        await update.message.reply_text(
+            f"✅ Capital para Futuros: **U$ {balance:,.2f}**\n\n"
+            "📝 **Etapa 5/5 - Indicação**\n\n"
+            "👥 **Quem te indicou o gerenciador?**\n\n"
+            "Digite o nome ou @ do Telegram de quem te indicou:\n"
+            "(ou digite `ninguém` se não foi indicado)",
+            parse_mode=ParseMode.MARKDOWN
+        )
+    
+    elif step == 'referral':
+        # Store referral info
+        referral = text.strip()
+        if len(referral) < 2:
+            await update.message.reply_text(
+                "❌ Por favor, digite quem te indicou ou `ninguém`:",
+                parse_mode=ParseMode.MARKDOWN
+            )
+            return
+        
+        context.user_data['reg_referral'] = referral
         
         # Complete registration
         async with get_async_session() as session:
@@ -248,7 +275,8 @@ async def handle_registration_input(update: Update, context: ContextTypes.DEFAUL
                 full_name=context.user_data['reg_name'],
                 phone=context.user_data['reg_phone'],
                 birth_date=context.user_data['reg_birth_date'],
-                futures_balance=balance
+                futures_balance=context.user_data['reg_futures_balance'],
+                referral=referral
             )
             await session.commit()
         
@@ -560,25 +588,44 @@ async def handle_total_invested_input(update: Update, context: ContextTypes.DEFA
     context.user_data['quantity'] = quantity
     context.user_data['state'] = None
     
-    # Calculate current value and profit/loss
-    current_value = quantity * current_price
-    profit_loss = current_value - total_invested
-    profit_percent = (profit_loss / total_invested * 100) if total_invested > 0 else 0
-    pl_emoji = "🟢" if profit_loss >= 0 else "🔴"
+    # Check if this is a stablecoin (USDT reserve)
+    stablecoins = ["USDT", "USDC", "BUSD", "DAI", "TUSD"]
+    is_stablecoin = symbol.upper() in stablecoins
     
-    # Show confirmation with option to correct
-    message = (
-        f"📋 **Resumo do Ativo**\n\n"
-        f"🪙 **{symbol.upper()}** ({name})\n\n"
-        f"💵 **Preço de Compra:** U$ {format_us_price(price)}\n"
-        f"💸 **Total Investido:** U$ {format_us_price(total_invested)}\n"
-        f"📦 **Quantidade:** {quantity:,.6f} _(calculado)_\n\n"
-        f"\u2796\u2796\u2796\u2796\u2796\u2796\u2796\u2796\u2796\u2796\n\n"
-        f"📊 **Preço Atual:** U$ {format_us_price(current_price)}\n"
-        f"📈 **Valorização do investimento inicial:** U$ {format_us_price(current_value)}\n"
-        f"{pl_emoji} **Lucro/Prejuízo:** U$ {format_us_price(profit_loss)} ({profit_percent:+.2f}%)\n\n"
-        f"Confirma ou deseja corrigir algum dado?"
-    )
+    if is_stablecoin:
+        # Special display for stablecoins (reserve) - simplified view
+        message = (
+            f"💵 **Reserva de Caixa**\n\n"
+            f"🪙 **{symbol.upper()}** ({name})\n\n"
+            f"💸 **Total Investido:** U$ {format_us_price(total_invested)}\n"
+            f"📦 **Quantidade:** {quantity:,.2f} {symbol.upper()}\n\n"
+            f"\u2796\u2796\u2796\u2796\u2796\u2796\u2796\u2796\u2796\u2796\n\n"
+            f"💡 **Reserva de caixa para novos investimentos**\n\n"
+            f"Esta reserva será utilizada para:\n"
+            f"• Comprar novos ativos\n"
+            f"• Fazer preço médio em quedas\n"
+            f"• Aproveitar oportunidades de mercado\n\n"
+            f"Confirma ou deseja corrigir algum dado?"
+        )
+    else:
+        # Standard display for regular assets
+        current_value = quantity * current_price
+        profit_loss = current_value - total_invested
+        profit_percent = (profit_loss / total_invested * 100) if total_invested > 0 else 0
+        pl_emoji = "🟢" if profit_loss >= 0 else "🔴"
+        
+        message = (
+            f"📋 **Resumo do Ativo**\n\n"
+            f"🪙 **{symbol.upper()}** ({name})\n\n"
+            f"💵 **Preço de Compra:** U$ {format_us_price(price)}\n"
+            f"💸 **Total Investido:** U$ {format_us_price(total_invested)}\n"
+            f"📦 **Quantidade:** {quantity:,.6f} _(calculado)_\n\n"
+            f"\u2796\u2796\u2796\u2796\u2796\u2796\u2796\u2796\u2796\u2796\n\n"
+            f"📊 **Preço Atual:** U$ {format_us_price(current_price)}\n"
+            f"📈 **Valorização do investimento inicial:** U$ {format_us_price(current_value)}\n"
+            f"{pl_emoji} **Lucro/Prejuízo:** U$ {format_us_price(profit_loss)} ({profit_percent:+.2f}%)\n\n"
+            f"Confirma ou deseja corrigir algum dado?"
+        )
     
     await update.message.reply_text(
         message,
@@ -884,40 +931,78 @@ async def handle_reserve_target_input(update: Update, context: ContextTypes.DEFA
     )
 
 
+# ==================== ANALYZE ASSET MESSAGE HANDLERS ====================
+
+async def handle_analyze_symbol_input(update: Update, context: ContextTypes.DEFAULT_TYPE, text: str):
+    """Handle symbol input for asset analysis."""
+    symbol_input = text.strip().upper()
+    
+    # Check if it's a perpetual format
+    is_perpetual = symbol_input.endswith(".P")
+    
+    # Clean symbol
+    clean_symbol = symbol_input.replace(".P", "")
+    
+    # Ensure it ends with USDT
+    if not any(clean_symbol.endswith(q) for q in ["USDT", "USD", "BTC", "ETH"]):
+        clean_symbol = f"{clean_symbol}USDT"
+    
+    # Store in context
+    context.user_data['analyze_symbol'] = clean_symbol
+    context.user_data['analyze_is_perpetual'] = is_perpetual
+    context.user_data['state'] = None
+    
+    display_symbol = f"{clean_symbol}.P" if is_perpetual else clean_symbol
+    
+    await update.message.reply_text(
+        f"✅ Ativo selecionado: **{display_symbol}**\n\n"
+        f"⏱️ **Selecione o Tempo Gráfico**\n\n"
+        f"Escolha o timeframe para a análise:",
+        reply_markup=KeyboardBuilder.analyze_asset_timeframe(),
+        parse_mode=ParseMode.MARKDOWN
+    )
+
+
 # ==================== FUTURES MESSAGE HANDLERS ====================
 
 async def handle_futures_pair_input(update: Update, context: ContextTypes.DEFAULT_TYPE, text: str):
     """
     Handle futures pair symbol input - Step 1 of new trade flow.
-    Accepts formats: BTC/USDT, BTCUSDT, BTC, BTC.P, USDT.P, TOTAL, etc.
+    Accepts formats: BTCUSDT, BTCUSDT.P, BTC, ETHUSDT.P, etc.
+    Perpetual format: BTCUSDT.P for futures perpetual
     """
     from src.utils.formatters import format_us_price, parse_us_number, MessageFormatter
     from src.services.risk_management import risk_service
     
-    pair_input = text.strip()
+    pair_input = text.strip().upper()
     user = update.effective_user
     
-    # Allow flexible pair formats: BTC/USDT, BTCUSDT, BTC, BTC.P, TOTAL, etc.
-    # Normalize: keep original format for display, clean for processing
-    display_pair = pair_input.upper()
+    # Check if it's a perpetual futures format (ends with .P)
+    is_perpetual = pair_input.endswith(".P")
     
-    # Clean pair for price lookup
-    clean_pair = pair_input.upper().replace("/", "").replace("-", "").replace(".P", "").replace(".p", "")
+    # Clean the input - remove .P suffix for processing
+    clean_input = pair_input.replace(".P", "")
     
     # Check if user provided full pair or just base symbol
     quote_currencies = ["USDT", "USDC", "USD", "BTC", "ETH", "BNB", "BUSD"]
     
-    has_quote = any(clean_pair.endswith(q) for q in quote_currencies)
+    has_quote = any(clean_input.endswith(q) for q in quote_currencies)
     
     if has_quote:
-        pair = clean_pair
+        pair_base = clean_input
         for q in quote_currencies:
-            if clean_pair.endswith(q):
-                symbol = clean_pair[:-len(q)]
+            if clean_input.endswith(q):
+                symbol = clean_input[:-len(q)]
                 break
     else:
-        symbol = clean_pair
-        pair = f"{symbol}USDT"
+        symbol = clean_input
+        pair_base = f"{symbol}USDT"
+    
+    # Build display pair (perpetual format if specified)
+    if is_perpetual:
+        display_pair = f"{pair_base}.P"
+    else:
+        display_pair = pair_base
     
     # Check if it's a valid symbol using TradingView
     await update.message.reply_text("🔍 Verificando par e obtendo preço atual...")
@@ -955,8 +1040,9 @@ async def handle_futures_pair_input(update: Update, context: ContextTypes.DEFAUL
     # Store trade data with step tracking
     context.user_data['futures_trade'] = {
         'step': 1,
-        'pair': display_pair if "/" in pair_input else pair,
+        'pair': display_pair,
         'symbol': symbol,
+        'is_perpetual': is_perpetual,
         'is_altcoin': is_altcoin,
         'current_price': current_price,
         'futures_balance': futures_balance,

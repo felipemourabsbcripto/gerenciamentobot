@@ -42,6 +42,7 @@ class User(Base):
     banned_by = Column(Integer, nullable=True)  # ID do admin que baniu
     invited_by = Column(Integer, nullable=True)  # ID de quem convidou
     invite_code = Column(String(50), nullable=True)  # Código de convite usado
+    referral = Column(String(255), nullable=True)  # Quem indicou o usuário (texto livre)
     
     coingecko_portfolio_id = Column(String(255), nullable=True)
     coingecko_api_key = Column(String(255), nullable=True)
@@ -411,6 +412,25 @@ class InviteCode(Base):
 
     def __repr__(self):
         return f"<InviteCode(code={self.code}, type={self.invite_type})>"
+
+
+class ReserveAllocation(Base):
+    """Track USDT reserve allocations when buying assets or averaging down."""
+    __tablename__ = "reserve_allocations"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    asset_id = Column(Integer, ForeignKey("assets.id"), nullable=True)  # Target asset (null for deposits)
+    allocation_type = Column(String(50), nullable=False)  # 'deposit', 'new_asset', 'average_down', 'withdrawal'
+    amount = Column(Float, nullable=False)  # USDT amount allocated
+    asset_symbol = Column(String(20), nullable=True)  # Target asset symbol
+    asset_quantity = Column(Float, nullable=True)  # Quantity of target asset bought
+    asset_price = Column(Float, nullable=True)  # Price at which asset was bought
+    notes = Column(Text, nullable=True)  # Description of allocation
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+    def __repr__(self):
+        return f"<ReserveAllocation(id={self.id}, type={self.allocation_type}, amount={self.amount})>"
 
 
 class AdminLog(Base):
