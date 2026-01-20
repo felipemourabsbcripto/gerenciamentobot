@@ -824,11 +824,15 @@ async def handle_reserve_status(query, telegram_id: int):
     for asset in assets:
         if not asset.is_confirmed:
             continue
-        asset_value = asset.quantity * (asset.current_price or asset.purchase_price)
-        total_value += asset_value
         
+        # Stablecoins sempre valem 1.00 USD - não precisa buscar preço
         if asset.symbol.upper() in stablecoins:
+            asset_value = asset.quantity * 1.0  # Quantidade = Valor em USD
             stablecoin_value += asset_value
+        else:
+            asset_value = asset.quantity * (asset.current_price or asset.purchase_price)
+        
+        total_value += asset_value
     
     reserve_percent = (stablecoin_value / total_value * 100) if total_value > 0 else 0
     target_percent = user.reserve_target_percent or settings.monitoring.reserve_percent

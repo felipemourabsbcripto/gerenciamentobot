@@ -64,8 +64,18 @@ class PriceMonitor:
             
         assets = await asset_repo.get_user_assets(user.id)
         
+        # Stablecoins não precisam de verificação de preço
+        STABLECOINS = {"USDT", "USDC", "BUSD", "DAI", "TUSD"}
+        
         for asset in assets:
             if not asset.is_confirmed:
+                continue
+            
+            # Skip stablecoins - preço sempre 1.00, não precisa verificar
+            asset_symbol = asset.symbol.upper().replace("USDT", "").replace("/", "")
+            if asset_symbol in STABLECOINS or asset.symbol.upper() in STABLECOINS:
+                # Apenas atualizar preço como 1.00 sem chamar API
+                await asset_repo.update_current_price(asset.id, 1.0)
                 continue
                 
             try:
