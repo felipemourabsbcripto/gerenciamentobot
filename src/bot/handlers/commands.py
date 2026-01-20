@@ -14,12 +14,43 @@ logger = get_logger(__name__)
 
 
 async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Handle /start command - with mandatory registration."""
+    """Handle /start command - with mandatory registration and invite links."""
     user = update.effective_user
+    
+    # Check for invite code in start parameter (e.g., /start invite_ABC123)
+    invite_code = None
+    if context.args and len(context.args) > 0:
+        start_param = context.args[0]
+        if start_param.startswith("invite_"):
+            invite_code = start_param.replace("invite_", "")
+            logger.info(f"User {user.id} starting with invite code: {invite_code}")
     
     async with get_async_session() as session:
         user_repo = UserRepository(session)
         admin_repo = AdminRepository(session)
+        
+        # Validate invite code if provided
+        if invite_code:
+            invite = await admin_repo.get_invite_by_code(invite_code)
+            if not invite:
+                await update.message.reply_text(
+                    "❌ **Código de convite inválido ou expirado.**\n\n"
+                    "Solicite um novo link de convite ao administrador.",
+                    parse_mode=ParseMode.MARKDOWN
+                )
+                return
+            
+            if not invite.is_active:
+                await update.message.reply_text(
+                    "❌ **Este código de convite não está mais ativo.**\n\n"
+                    "Solicite um novo link ao administrador.",
+                    parse_mode=ParseMode.MARKDOWN
+                )
+                return
+            
+            # Store invite code in context for registration
+            context.user_data['invite_code'] = invite_code
+            context.user_data['invite_type'] = invite.invite_type
         
         # Get or create user
         db_user = await user_repo.get_or_create(
@@ -28,6 +59,11 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
             first_name=user.first_name,
             last_name=user.last_name
         )
+        
+        # If user came with invite code, update invite_code field
+        if invite_code and not db_user.invite_code:
+            db_user.invite_code = invite_code
+        
         await session.commit()
         
         # Check if user is banned
@@ -44,6 +80,10 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
             # Start registration flow
             context.user_data.clear()
             context.user_data['registration_step'] = 'name'
+            
+            # Keep invite code if present
+            if invite_code:
+                context.user_data['invite_code'] = invite_code
             
             await update.message.reply_text(
                 "👋 **Bem-vindo ao Gerenciador de risco da comunidade!**\n\n"
