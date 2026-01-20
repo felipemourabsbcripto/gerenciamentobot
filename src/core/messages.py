@@ -104,9 +104,9 @@ class Messages:
     # ==========================================================================
     
     FUTURES_NEW_TRADE_PAIR = (
-        "📝 **Novo Trade Futuros**\n\n"
+        "📝 **Nova Operação Futuros**\n\n"
         "📋 **Etapa 1/8 - Par de negociação**\n\n"
-        "Digite o **par** do trade:\n\n"
+        "Digite o **par** da operação:\n\n"
         "Exemplos: `BTC/USDT`, `ETH/USDT`, `SOL`, `DOGE`\n"
         "Formatos especiais: `BTC.P`, `USDT.P`, `TOTAL`\n\n"
         "💡 Use `/` entre os pares. Se digitar apenas o símbolo (ex: `BTC`), será usado USDT como quote."
@@ -134,20 +134,20 @@ class Messages:
         "Alertas são enviados automaticamente quando:\n"
         "• 🔴 Ativo cai 30%+ (oportunidade de preço médio)\n"
         "• 🟢 Ativo sobe 100%+ (sugestão de venda)\n"
-        "• ☠️ Death Cross detectado (sinal de baixa)"
+        "• ☠️ Cruzamento da Morte detectado (sinal de baixa)"
     )
     
     NO_DEATH_CROSS = (
-        "☠️ **Scan Death Cross**\n\n"
-        "✅ Nenhum dos seus ativos está em Death Cross!\n\n"
-        "Death Cross ocorre quando a MA50 cruza abaixo da MA200,\n"
+        "☠️ **Busca Cruzamento da Morte**\n\n"
+        "✅ Nenhum dos seus ativos está em Cruzamento da Morte!\n\n"
+        "Cruzamento da Morte ocorre quando a MA50 cruza abaixo da MA200,\n"
         "indicando possível tendência de baixa."
     )
     
     NO_GOLDEN_CROSS = (
-        "✨ **Scan Golden Cross**\n\n"
-        "Nenhum dos seus ativos está em Golden Cross no momento.\n\n"
-        "Golden Cross ocorre quando a MA50 cruza acima da MA200,\n"
+        "✨ **Busca Cruzamento Dourado**\n\n"
+        "Nenhum dos seus ativos está em Cruzamento Dourado no momento.\n\n"
+        "Cruzamento Dourado ocorre quando a MA50 cruza acima da MA200,\n"
         "indicando possível tendência de alta."
     )
     
@@ -155,7 +155,7 @@ class Messages:
         "⚠️ **Ativos em Risco**\n\n"
         "✅ Nenhum dos seus ativos está em situação de alto risco!\n\n"
         "Ativos são considerados de alto risco quando:\n"
-        "• Possuem Death Cross ativo\n"
+        "• Possuem Cruzamento da Morte ativo\n"
         "• Queda de 30% ou mais do preço médio"
     )
 

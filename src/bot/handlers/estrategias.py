@@ -244,7 +244,7 @@ async def _handle_how_it_works(query):
         "• Código do padrão (ex: GGS-1234)\n"
         "• Probabilidade de acerto\n"
         "• Ação recomendada\n"
-        "• Target e Stop Loss (quando aplicável)\n\n"
+        "• Alvo e Stop (quando aplicável)\n\n"
         "<b>⚠️ IMPORTANTE:</b>\n"
         "• Use sempre gestão de risco adequada\n"
         "• Nenhuma estratégia é 100% precisa\n"
@@ -292,9 +292,9 @@ async def send_strategy_alert(context: ContextTypes.DEFAULT_TYPE, user_id: int, 
     )
     
     if signal.target_price:
-        message += f"<b>Target:</b> ${signal.target_price:,.2f}\n"
+        message += f"<b>Alvo:</b> ${signal.target_price:,.2f}\n"
     if signal.stop_loss:
-        message += f"<b>Stop Loss:</b> ${signal.stop_loss:,.2f}\n"
+        message += f"<b>Stop:</b> ${signal.stop_loss:,.2f}\n"
     
     if signal.reasons:
         message += "\n<b>Indicadores:</b>\n"

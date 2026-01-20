@@ -1195,8 +1195,8 @@ async def handle_futures_custom_leverage_input(update: Update, context: ContextT
         f"{risk_warning}"
         "━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
         f"✅ **Etapa 5/9 concluída!**\n\n"
-        "📝 **Etapa 6/9 - Stop Loss**\n\n"
-        "Digite o **preço do Stop Loss**:\n\n"
+        "📝 **Etapa 6/9 - Stop (Perda Máx.)**\n\n"
+        "Digite o **preço do Stop**:\n\n"
         f"💡 Preço de compra: U$ {format_us_price(entry_price)}\n"
         f"💥 Preço de liquidação: U$ {format_us_price(liquidation_price)}\n\n"
         "_Recomendação: Stop antes da liquidação!_",
@@ -1238,7 +1238,7 @@ async def handle_futures_stop_loss_input(update: Update, context: ContextTypes.D
     # Validar direção do stop
     if side == 'long' and stop_loss >= entry_price:
         await update.message.reply_text(
-            "❌ Para **LONG**, o stop loss deve ser **menor** que o preço de entrada.\n\n"
+            "❌ Para **COMPRA**, o stop deve ser **menor** que o preço de entrada.\n\n"
             f"📥 Preço de entrada: U$ {format_us_price(entry_price)}\n"
             f"🛑 Stop informado: U$ {format_us_price(stop_loss)}\n\n"
             "Digite um valor menor:",
@@ -1248,7 +1248,7 @@ async def handle_futures_stop_loss_input(update: Update, context: ContextTypes.D
         return
     elif side == 'short' and stop_loss <= entry_price:
         await update.message.reply_text(
-            "❌ Para **SHORT**, o stop loss deve ser **maior** que o preço de entrada.\n\n"
+            "❌ Para **VENDA**, o stop deve ser **maior** que o preço de entrada.\n\n"
             f"📥 Preço de entrada: U$ {format_us_price(entry_price)}\n"
             f"🛑 Stop informado: U$ {format_us_price(stop_loss)}\n\n"
             "Digite um valor maior:",
@@ -1306,7 +1306,7 @@ async def handle_futures_stop_loss_input(update: Update, context: ContextTypes.D
     
     await update.message.reply_text(
         step_summary + "\n\n"
-        f"📊 **Análise do Stop Loss:**\n"
+        f"📊 **Análise do Stop:**\n"
         f"• Distância do stop: {stop_percent:.2f}%\n"
         f"• Risco deste trade: U$ {format_us_price(risk_usd)}\n\n"
         f"💰 **Gerenciamento de Risco:**\n"
@@ -1487,7 +1487,7 @@ async def handle_futures_timeframe_input(update: Update, context: ContextTypes.D
     await update.message.reply_text(
         f"🔍 **Deseja verificar zonas de suporte/resistência?**\n\n"
         f"Com base no timeframe {timeframe.upper()}, o bot pode sugerir:\n"
-        f"• {'Resistências e zonas de stop (SHORT)' if side == 'short' else 'Suportes e zonas de stop (LONG)'}\n"
+        f"• {'Resistências e zonas de stop (VENDA)' if side == 'short' else 'Suportes e zonas de stop (COMPRA)'}\n"
         f"• Ajustes no stop loss baseados em zonas técnicas\n\n"
         f"Isso ajuda a posicionar o stop em zonas mais seguras.",
         reply_markup=KeyboardBuilder.futures_zone_check(),
@@ -1542,7 +1542,7 @@ async def handle_futures_quantity_input(update: Update, context: ContextTypes.DE
     
     await update.message.reply_text(
         f"📝 **Trade: {pair}** {leverage}x\n\n"
-        f"📥 Entry: ${entry_price:,.4f}\n"
+        f"📥 Entrada: ${entry_price:,.4f}\n"
         f"📦 Quantidade: {quantity:,.6f}\n"
         f"📊 Valor da posição: ${position_value:,.2f}\n\n"
         f"Digite a **margem** (colateral) em USD:\n\n"
@@ -1596,7 +1596,7 @@ async def handle_futures_margin_input(update: Update, context: ContextTypes.DEFA
         "━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
         f"✅ **Etapa 3/9 concluída!**\n\n"
         "📝 **Etapa 4/9 - Direção**\n\n"
-        "A operação será **LONG** (compra/alta) ou **SHORT** (venda/baixa)?",
+        "A operação será **COMPRA** (alta) ou **VENDA** (baixa)?",
         reply_markup=KeyboardBuilder.futures_side_selection(),
         parse_mode=ParseMode.MARKDOWN
     )
@@ -1644,7 +1644,7 @@ async def handle_futures_close_price_input(update: Update, context: ContextTypes
     await update.message.reply_text(
         f"📤 **Confirmar Fechamento**\n\n"
         f"🪙 **{trade.pair}** @ {trade.leverage}x\n"
-        f"📥 Entry: ${trade.entry_price:,.4f}\n"
+        f"📥 Entrada: ${trade.entry_price:,.4f}\n"
         f"📤 Exit: ${price:,.4f}\n\n"
         f"{pnl_emoji} **P/L Previsto:** ${pnl:+,.2f} ({pnl_pct:+.2f}%)\n\n"
         f"Confirma o fechamento?",
@@ -1718,9 +1718,9 @@ async def handle_futures_sltp_input(update: Update, context: ContextTypes.DEFAUL
     
     result = []
     if stop_loss > 0:
-        result.append(f"🛑 Stop Loss: ${stop_loss:,.4f}")
+        result.append(f"🛑 Stop: ${stop_loss:,.4f}")
     if take_profit > 0:
-        result.append(f"🎯 Take Profit: ${take_profit:,.4f}")
+        result.append(f"🎯 Alvo: ${take_profit:,.4f}")
     
     await update.message.reply_text(
         f"✅ **SL/TP Atualizados!**\n\n" + "\n".join(result),

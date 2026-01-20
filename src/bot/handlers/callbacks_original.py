@@ -411,12 +411,12 @@ async def handle_whale_alert(query):
         "━━━━━━━━━━━━━━━━━━━━━\n\n"
         "💥 **LIQUIDAÇÕES BINANCE**\n"
         "Monitora liquidações em tempo real:\n\n"
-        "• 🔴 Liquidações de posições LONG\n"
-        "• 🟢 Liquidações de posições SHORT\n"
+        "• 🔴 Liquidações de posições COMPRA\n"
+        "• 🟢 Liquidações de posições VENDA\n"
         "• 📊 Volume de liquidações por ativo\n"
         "• ⚡ Alertas de grandes liquidações\n\n"
-        "💡 Muitas liquidações LONG = possível fundo local\n"
-        "💡 Muitas liquidações SHORT = possível topo local\n\n"
+        "💡 Muitas liquidações COMPRA = possível fundo local\n"
+        "💡 Muitas liquidações VENDA = possível topo local\n\n"
         "━━━━━━━━━━━━━━━━━━━━━\n\n"
         "😱 **FEAR & GREED INDEX**\n"
         "Índice de Medo e Ganância do mercado crypto:\n\n"
@@ -2652,8 +2652,8 @@ async def handle_futures_leverage(query, context: ContextTypes.DEFAULT_TYPE, lev
         f"{risk_info}"
         "\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
         f"✅ **Etapa 5/9 concluída!**\n\n"
-        "📝 **Etapa 6/9 - Stop Loss**\n\n"
-        "Digite o **preço do Stop Loss**:\n\n"
+        "📝 **Etapa 6/9 - Stop (Perda Máx.)**\n\n"
+        "Digite o **preço do Stop**:\n\n"
         f"💡 Preço de compra: U$ {format_us_price(entry_price)}\n"
         f"💥 Preço de liquidação: U$ {format_us_price(liquidation_price)}\n\n"
         "_Recomendação: Stop antes da liquidação!_",
@@ -2736,7 +2736,7 @@ async def handle_futures_timeframe_selection(query, context: ContextTypes.DEFAUL
         f"✅ **Timeframe:** {timeframe.upper()}\n\n"
         f"🔍 **Deseja verificar zonas de suporte/resistência?**\n\n"
         f"Com base no timeframe {timeframe.upper()}, o bot pode sugerir:\n"
-        f"• {'Resistências e zonas de stop (SHORT)' if side == 'short' else 'Suportes e zonas de stop (LONG)'}\n"
+        f"• {'Resistências e zonas de stop (VENDA)' if side == 'short' else 'Suportes e zonas de stop (COMPRA)'}\n"
         f"• Ajustes no stop loss baseados em zonas técnicas\n\n"
         f"Isso ajuda a posicionar o stop em zonas mais seguras.",
         reply_markup=KeyboardBuilder.futures_zone_check(),
@@ -2828,7 +2828,7 @@ async def handle_futures_risk_info(query):
         "• Altcoins podem mover 20-50% em um dia\n\n"
         "**Recomendações:**\n"
         "• Use no máximo 3x para altcoins\n"
-        "• Sempre use Stop Loss\n"
+        "• Sempre use Stop\n"
         "• Arrisque apenas o que pode perder",
         reply_markup=KeyboardBuilder.futures_menu(),
         parse_mode=ParseMode.MARKDOWN
@@ -3338,8 +3338,8 @@ async def handle_futures_confirm(query, context: ContextTypes.DEFAULT_TYPE, tele
     
     await query.edit_message_text(
         f"✅ **Trade criado com sucesso!**\n\n"
-        f"🪙 **{trade.pair}** {'🟢 LONG' if trade.side == 'long' else '🔴 SHORT'} @ {trade.leverage}x\n"
-        f"📥 Entry: ${trade.entry_price:,.4f}\n"
+        f"🪙 **{trade.pair}** {'🟢 COMPRA' if trade.side == 'long' else '🔴 VENDA'} @ {trade.leverage}x\n"
+        f"📥 Entrada: ${trade.entry_price:,.4f}\n"
         f"📦 Qty: {trade.quantity:,.6f}\n"
         f"💰 Margem: ${trade.margin:,.2f}"
         f"{risk_msg}",
@@ -4126,7 +4126,7 @@ async def handle_futures_final_confirm(query, context: ContextTypes.DEFAULT_TYPE
     # Clear trade data
     context.user_data.pop('futures_trade', None)
     
-    direction_emoji = "🟢 LONG" if trade.get('side') == "long" else "🔴 SHORT"
+    direction_emoji = "🟢 COMPRA" if trade.get('side') == "long" else "🔴 VENDA"
     
     # Build targets summary
     targets_text = ""
@@ -4140,7 +4140,7 @@ async def handle_futures_final_confirm(query, context: ContextTypes.DEFAULT_TYPE
     await query.edit_message_text(
         f"✅ **Trade Cadastrado com Sucesso!**\n\n"
         f"🪙 **{trade.get('pair')}** | {direction_emoji} | {trade.get('leverage')}x\n\n"
-        f"📥 Entry: U$ {format_us_price(trade.get('entry_price', 0))}\n"
+        f"📥 Entrada: U$ {format_us_price(trade.get('entry_price', 0))}\n"
         f"🛑 Stop: U$ {format_us_price(trade.get('stop_loss', trade.get('stop_price', 0)))} ({trade.get('stop_percent', 0):.2f}%)\n"
         f"⚠️ Risco: U$ {format_us_price(trade.get('risk_usd', 0))}\n\n"
         f"{targets_text}"
@@ -4160,7 +4160,7 @@ async def handle_futures_adjust_stop(query, context: ContextTypes.DEFAULT_TYPE):
     current_stop = trade.get('stop_percent', 0)
     
     await query.edit_message_text(
-        f"✏️ **Ajustar Stop Loss**\n\n"
+        f"✏️ **Ajustar Stop**\n\n"
         f"Stop atual: **{current_stop:.2f}%**\n\n"
         f"Digite o novo percentual de stop:",
         reply_markup=KeyboardBuilder.cancel_action(),

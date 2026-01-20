@@ -658,7 +658,7 @@ class TrendAnalysisService:
         if analysis.trend_direction == TrendDirection.STRONG_BULLISH:
             if analysis.rsi and analysis.rsi > 75:
                 return "⚠️ Tendência de alta forte, mas RSI sobrecomprado. Aguardar correção."
-            return "✅ Tendência de alta forte confirmada. Considerar entrada LONG."
+            return "✅ Tendência de alta forte confirmada. Considerar entrada em COMPRA."
         
         elif analysis.trend_direction == TrendDirection.BULLISH:
             return "📈 Tendência de alta. Buscar entradas em pullbacks."
@@ -666,14 +666,14 @@ class TrendAnalysisService:
         elif analysis.trend_direction == TrendDirection.STRONG_BEARISH:
             if analysis.rsi and analysis.rsi < 25:
                 return "⚠️ Tendência de baixa forte, mas RSI sobrevendido. Possível bounce."
-            return "🔻 Tendência de baixa forte. Evitar LONG, considerar SHORT."
+            return "🔻 Tendência de baixa forte. Evitar COMPRA, considerar VENDA."
         
         elif analysis.trend_direction == TrendDirection.BEARISH:
-            return "📉 Tendência de baixa. Cautela com posições LONG."
+            return "📉 Tendência de baixa. Cautela com posições de COMPRA."
         
         else:
             if analysis.adx_value and analysis.adx_value < 20:
-                return "⏸️ Mercado lateral sem tendência. Evitar trades direcionais."
+                return "⏸️ Mercado lateral sem tendência. Evitar operações direcionais."
             return "⚖️ Tendência indefinida. Aguardar confirmação."
 
     async def analyze(self, symbol: str, timeframe: str = "4h") -> Optional[TrendAnalysis]:
@@ -961,13 +961,13 @@ class TrendAnalysisService:
         
         msg = (
             f"📊 **Análise de Tendência - {analysis.symbol}**\n"
-            f"⏱️ Timeframe: {analysis.timeframe}\n\n"
+            f"⏱️ Tempo Gráfico: {analysis.timeframe}\n\n"
             f"━━━━━━━━━━━━━━━━━━━━━\n\n"
             f"**{trend_emoji.get(analysis.trend_direction, '⚪')} TENDÊNCIA: {analysis.trend_direction.value}**\n\n"
             f"💰 Preço: ${analysis.current_price:,.2f}\n"
-            f"📈 Força: {analysis.trend_strength:.0f}%\n"
+            f"📈 Intensidade: {analysis.trend_strength:.0f}%\n"
             f"🎯 Confiança: {analysis.confidence:.0f}%\n"
-            f"⚠️ Risco: {analysis.risk_level}\n\n"
+            f"⚠️ Risco: {analysis.risk_level.replace('HIGH', 'ALTO').replace('MEDIUM', 'MÉDIO').replace('LOW', 'BAIXO')}\n\n"
             f"━━━━━━━━━━━━━━━━━━━━━\n\n"
             f"**📉 Confluence Score:** {analysis.confluence_score:+.1f}\n"
             f"{conf_bar}\n\n"

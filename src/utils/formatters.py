@@ -376,12 +376,12 @@ class MessageFormatter:
     def futures_menu_message() -> str:
         """Format futures menu message."""
         return (
-            "📈 **Menu de Trades Futuros**\n\n"
+            "📈 **Menu de Futuros**\n\n"
             "Gerencie suas posições alavancadas em contratos futuros.\n\n"
             "⚠️ **AVISO DE RISCO:**\n"
             "• Alavancagem amplifica ganhos E perdas\n"
             "• Altcoins com >3x = Alto Risco de Liquidação\n"
-            "• Use sempre Stop Loss!\n\n"
+            "• Use sempre Stop!\n\n"
             "Selecione uma opção:"
         )
 
@@ -429,7 +429,7 @@ class MessageFormatter:
             return (
                 "📈 **Posições Abertas (Futuros)**\n\n"
                 "🚫 Você não tem posições abertas.\n\n"
-                "Use **➕ Novo Trade** para abrir uma posição!"
+                "Use **➕ Nova Operação** para abrir uma posição!"
             )
         
         total_margin = stats.get('total_margin', 0)
@@ -444,7 +444,7 @@ class MessageFormatter:
         ]
         
         for trade in trades:
-            side_emoji = "🟢 LONG" if trade.side == "long" else "🔴 SHORT"
+            side_emoji = "🟢 COMPRA" if trade.side == "long" else "🔴 VENDA"
             risk_emoji = "⚠️" if trade.risk_level in ["high", "extreme"] else ""
             pnl = trade.unrealized_pnl or 0
             pnl_pct = trade.unrealized_pnl_percent or 0
@@ -452,7 +452,7 @@ class MessageFormatter:
             
             lines.append(
                 f"{risk_emoji}{side_emoji} **{trade.pair}** @ {trade.leverage}x\n"
-                f"   📥 Entry: ${trade.entry_price:,.4f}\n"
+                f"   📥 Entrada: ${trade.entry_price:,.4f}\n"
                 f"   📊 Atual: ${trade.current_price or trade.entry_price:,.4f}\n"
                 f"   {trade_pnl_emoji} P/L: ${pnl:+,.2f} ({pnl_pct:+.2f}%)\n"
             )
@@ -463,7 +463,7 @@ class MessageFormatter:
     @staticmethod
     def futures_trade_detail(trade) -> str:
         """Format detailed futures trade information."""
-        side_emoji = "🟢 LONG" if trade.side == "long" else "🔴 SHORT"
+        side_emoji = "🟢 COMPRA" if trade.side == "long" else "🔴 VENDA"
         
         # Risk indicator
         risk_emoji = ""
@@ -487,7 +487,7 @@ class MessageFormatter:
         lines = [
             f"📊 **{trade.pair}** {side_emoji} {trade.leverage}x{risk_line}",
             f"━━━━━━━━━━━━━━━━━━",
-            f"📥 Entry: {format_price(entry)}",
+            f"📥 Entrada: {format_price(entry)}",
             f"📈 Atual: {format_price(current)}",
             f"📦 Qtd: {format_quantity(trade.quantity)}",
             f"💰 Margem: {format_price(trade.margin)}",
@@ -513,7 +513,7 @@ class MessageFormatter:
                 sl_pct = ((entry - trade.stop_loss) / entry) * 100
             else:
                 sl_pct = ((trade.stop_loss - entry) / entry) * 100
-            sl_line = f"🛑 Stop Loss: {format_price(trade.stop_loss)} (-{sl_pct:.2f}%)"
+            sl_line = f"🛑 Stop: {format_price(trade.stop_loss)} (-{sl_pct:.2f}%)"
             lines.append(sl_line)
         
         if trade.take_profit:
@@ -521,7 +521,7 @@ class MessageFormatter:
                 tp_pct = ((trade.take_profit - entry) / entry) * 100
             else:
                 tp_pct = ((entry - trade.take_profit) / entry) * 100
-            tp_line = f"🎯 Take Profit: {format_price(trade.take_profit)} (+{tp_pct:.2f}%)"
+            tp_line = f"🎯 Alvo: {format_price(trade.take_profit)} (+{tp_pct:.2f}%)"
             lines.append(tp_line)
         
         # Calculate Risk:Reward ratio if both SL and TP are set
@@ -559,7 +559,7 @@ class MessageFormatter:
         take_profit: Optional[float] = None
     ) -> str:
         """Format new trade confirmation summary."""
-        side_emoji = "🟢 LONG" if side == "long" else "🔴 SHORT"
+        side_emoji = "🟢 COMPRA" if side == "long" else "🔴 VENDA"
         
         # Calculate risk
         risk_level = "normal"
@@ -578,23 +578,23 @@ class MessageFormatter:
         leveraged_value = position_value * leverage
         
         lines = [
-            "📝 **Confirmar Novo Trade**\n",
+            "📝 **Confirmar Nova Operação**\n",
             risk_warning,
             f"🪙 **Par:** {pair}",
             f"📍 **Lado:** {side_emoji}",
             f"⚡ **Alavancagem:** {leverage}x",
             f"━━━━━━━━━━━━━━━━━━━━",
-            f"📥 **Preço Entry:** ${entry_price:,.6f}",
+            f"📥 **Preço Entrada:** ${entry_price:,.6f}",
             f"📦 **Quantidade:** {quantity:,.6f}",
             f"💰 **Margem:** ${margin:,.2f}",
             f"📊 **Valor da Posição:** ${leveraged_value:,.2f}",
         ]
         
         if stop_loss:
-            lines.append(f"🛑 **Stop Loss:** ${stop_loss:,.6f}")
+            lines.append(f"🛑 **Stop:** ${stop_loss:,.6f}")
         
         if take_profit:
-            lines.append(f"🎯 **Take Profit:** ${take_profit:,.6f}")
+            lines.append(f"🎯 **Alvo:** ${take_profit:,.6f}")
         
         return "\n".join(lines)
 
@@ -603,7 +603,7 @@ class MessageFormatter:
         """Format futures trade history."""
         if not trades:
             return (
-                "📊 **Histórico de Trades**\n\n"
+                "📊 **Histórico de Operações**\n\n"
                 "🚫 Você não tem trades finalizados.\n"
             )
         
@@ -612,8 +612,8 @@ class MessageFormatter:
         pnl_emoji = "🟢" if realized_pnl >= 0 else "🔴"
         
         lines = [
-            "📊 **Histórico de Trades**\n",
-            f"📈 **Win Rate:** {win_rate:.1f}%",
+            "📊 **Histórico de Operações**\n",
+            f"📈 **Taxa de Acerto:** {win_rate:.1f}%",
             f"{pnl_emoji} **P/L Total Realizado:** ${realized_pnl:+,.2f}\n",
             "━━━━━━━━━━━━━━━━━━━━\n"
         ]
@@ -652,10 +652,10 @@ class MessageFormatter:
             f"💰 **Margem em Uso:** ${total_margin:,.2f}\n"
             f"{unrealized_emoji} **P/L Não Realizado:** ${unrealized:+,.2f}\n"
             f"━━━━━━━━━━━━━━━━━━━━\n"
-            f"📊 **Trades Fechados:** {closed_count}\n"
-            f"✅ **Trades Vencedores:** {winning}\n"
-            f"❌ **Trades Perdedores:** {losing}\n"
-            f"📈 **Win Rate:** {win_rate:.1f}%\n"
+            f"📊 **Operações Encerradas:** {closed_count}\n"
+            f"✅ **Operações Ganhas:** {winning}\n"
+            f"❌ **Operações Perdidas:** {losing}\n"
+            f"📈 **Taxa de Acerto:** {win_rate:.1f}%\n"
             f"{realized_emoji} **P/L Total Realizado:** ${realized:+,.2f}"
         )
 
@@ -664,7 +664,7 @@ class MessageFormatter:
         """Format high risk trades warning message."""
         if not trades:
             return (
-                "⚠️ **Trades de Alto Risco**\n\n"
+                "⚠️ **Operações de Alto Risco**\n\n"
                 "✅ Você não tem trades de alto risco abertos.\n\n"
                 "**Lembrete:** Evite alavancagem >3x em altcoins!"
             )
@@ -691,7 +691,7 @@ class MessageFormatter:
         lines.append(
             "\n**Recomendações:**\n"
             "• Considere reduzir a posição\n"
-            "• Ajuste o Stop Loss\n"
+            "• Ajuste o Stop\n"
             "• Monitore de perto"
         )
         
@@ -700,7 +700,7 @@ class MessageFormatter:
     @staticmethod
     def futures_closed_trade_summary(trade) -> str:
         """Format closed trade summary."""
-        side_emoji = "🟢 LONG" if trade.side == "long" else "🔴 SHORT"
+        side_emoji = "🟢 COMPRA" if trade.side == "long" else "🔴 VENDA"
         pnl = trade.pnl or 0
         pnl_pct = trade.pnl_percent or 0
         pnl_emoji = "🟢" if pnl >= 0 else "🔴"
@@ -708,13 +708,13 @@ class MessageFormatter:
         status_text = "Fechado ✅" if trade.status == "closed" else "Liquidado 💀"
         
         return (
-            f"📊 **Trade {status_text}**\n\n"
+            f"📊 **Operação {status_text}**\n\n"
             f"🪙 **Par:** {trade.pair}\n"
             f"📍 **Lado:** {side_emoji}\n"
             f"⚡ **Alavancagem:** {trade.leverage}x\n"
             f"━━━━━━━━━━━━━━━━━━━━\n"
             f"📥 **Entry:** ${trade.entry_price:,.6f}\n"
-            f"📤 **Exit:** ${trade.current_price:,.6f}\n"
+            f"📤 **Saída:** ${trade.current_price:,.6f}\n"
             f"━━━━━━━━━━━━━━━━━━━━\n"
             f"{pnl_emoji} **P/L Final:** ${pnl:+,.2f} ({pnl_pct:+.2f}%)\n"
             f"📅 **Fechado em:** {trade.closed_at.strftime('%d/%m/%Y %H:%M') if trade.closed_at else 'N/A'}"
@@ -762,7 +762,7 @@ class MessageFormatter:
         max_risk = futures_balance * (risk_percent / 100)
         available_risk = max_risk - open_risk - risk_usd
         
-        side_emoji = "🟢 LONG" if side == "long" else "🔴 SHORT"
+        side_emoji = "🟢 COMPRA" if side == "long" else "🔴 VENDA"
         side_text = "LONG" if side == "long" else "SHORT"
         
         # Current price
@@ -863,7 +863,7 @@ class MessageFormatter:
         current_price = trade_data.get('current_price', 0)
         futures_balance = trade_data.get('futures_balance', 0)
         
-        side_emoji = "🟢 LONG" if side == "long" else "🔴 SHORT" if side else "❓"
+        side_emoji = "🟢 COMPRA" if side == "long" else "🔴 VENDA" if side else "❓"
         
         lines = [
             f"📋 **CADASTRO DE TRADE FUTUROS**\n",
