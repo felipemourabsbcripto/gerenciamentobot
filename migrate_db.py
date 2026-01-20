@@ -27,6 +27,7 @@ USER_COLUMNS = [
     ("banned_by", "INTEGER"),
     ("invited_by", "INTEGER"),
     ("invite_code", "VARCHAR(50)"),
+    ("referral", "VARCHAR(255)"),  # Quem indicou o usuário
     # Configurações de alertas personalizados
     ("price_alerts_enabled", "BOOLEAN DEFAULT 1"),
     ("check_interval_minutes", "INTEGER DEFAULT 5"),

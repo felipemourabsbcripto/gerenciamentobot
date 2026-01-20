@@ -42,6 +42,7 @@ class User(Base):
     banned_by = Column(Integer, nullable=True)  # ID do admin que baniu
     invited_by = Column(Integer, nullable=True)  # ID de quem convidou
     invite_code = Column(String(50), nullable=True)  # Código de convite usado
+    referral = Column(String(255), nullable=True)  # Quem indicou o usuário (texto livre)
     
     coingecko_portfolio_id = Column(String(255), nullable=True)
     coingecko_api_key = Column(String(255), nullable=True)
