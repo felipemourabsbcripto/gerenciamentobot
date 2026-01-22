@@ -989,8 +989,7 @@ async def handle_analyze_symbol_input(update: Update, context: ContextTypes.DEFA
 async def handle_futures_pair_input(update: Update, context: ContextTypes.DEFAULT_TYPE, text: str):
     """
     Handle futures pair symbol input - Step 1 of new trade flow.
-    Accepts formats: BTCUSDT, BTCUSDT.P, BTC, ETHUSDT.P, etc.
-    Perpetual format: BTCUSDT.P for futures perpetual
+    Accepts ONLY perpetual format: BTCUSDT.P, ETHUSDT.P, etc.
     """
     from src.utils.formatters import format_us_price, parse_us_number, MessageFormatter
     from src.services.risk_management import risk_service
@@ -998,32 +997,59 @@ async def handle_futures_pair_input(update: Update, context: ContextTypes.DEFAUL
     pair_input = text.strip().upper()
     user = update.effective_user
     
-    # Check if it's a perpetual futures format (ends with .P)
+    # Validar formato obrigatório: SIMBOLOUSDT.P
     is_perpetual = pair_input.endswith(".P")
+    
+    if not is_perpetual:
+        await update.message.reply_text(
+            "❌ **Formato inválido!**\n\n"
+            "Para futuros, use o formato perpétuo:\n"
+            "`SIMBOLOUSDT.P`\n\n"
+            "**Exemplos válidos:**\n"
+            "• `BTCUSDT.P`\n"
+            "• `ETHUSDT.P`\n"
+            "• `SOLUSDT.P`\n\n"
+            "Digite novamente:",
+            reply_markup=KeyboardBuilder.cancel_action(),
+            parse_mode=ParseMode.MARKDOWN
+        )
+        return
     
     # Clean the input - remove .P suffix for processing
     clean_input = pair_input.replace(".P", "")
     
-    # Check if user provided full pair or just base symbol
-    quote_currencies = ["USDT", "USDC", "USD", "BTC", "ETH", "BNB", "BUSD"]
+    # Validar que termina com USDT
+    if not clean_input.endswith("USDT"):
+        await update.message.reply_text(
+            "❌ **Formato inválido!**\n\n"
+            "O par deve terminar com `USDT.P`\n\n"
+            "**Exemplos válidos:**\n"
+            "• `BTCUSDT.P`\n"
+            "• `ETHUSDT.P`\n"
+            "• `SOLUSDT.P`\n\n"
+            "Digite novamente:",
+            reply_markup=KeyboardBuilder.cancel_action(),
+            parse_mode=ParseMode.MARKDOWN
+        )
+        return
     
-    has_quote = any(clean_input.endswith(q) for q in quote_currencies)
+    # Extract symbol (remove USDT)
+    symbol = clean_input.replace("USDT", "")
     
-    if has_quote:
-        pair_base = clean_input
-        for q in quote_currencies:
-            if clean_input.endswith(q):
-                symbol = clean_input[:-len(q)]
-                break
-    else:
-        symbol = clean_input
-        pair_base = f"{symbol}USDT"
+    if not symbol or len(symbol) < 2:
+        await update.message.reply_text(
+            "❌ **Símbolo inválido!**\n\n"
+            "Digite um par válido como:\n"
+            "• `BTCUSDT.P`\n"
+            "• `ETHUSDT.P`\n\n"
+            "Digite novamente:",
+            reply_markup=KeyboardBuilder.cancel_action(),
+            parse_mode=ParseMode.MARKDOWN
+        )
+        return
     
-    # Build display pair (perpetual format if specified)
-    if is_perpetual:
-        display_pair = f"{pair_base}.P"
-    else:
-        display_pair = pair_base
+    pair_base = clean_input
+    display_pair = pair_input  # BTCUSDT.P
     
     # Check if it's a valid symbol using TradingView
     await update.message.reply_text("🔍 Verificando par e obtendo preço atual...")

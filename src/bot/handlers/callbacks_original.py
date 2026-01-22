@@ -2499,12 +2499,16 @@ async def handle_futures_add(query, context: ContextTypes.DEFAULT_TYPE):
     context.user_data['futures_trade'] = {}
     
     await query.edit_message_text(
-        "📝 **Novo Trade Futuros**\n\n"
-        "📋 **Etapa 1/9 - Par de negociação**\n\n"
-        "Digite o **par** do trade:\n\n"
-        "Exemplos: `BTC/USDT`, `ETH/USDT`, `SOL`, `DOGE`\n"
-        "Formatos especiais: `BTC.P`, `USDT.P`, `TOTAL`\n\n"
-        "💡 Use `/` entre os pares. Se digitar apenas o símbolo (ex: `BTC`), será usado USDT como quote.",
+        "📝 **Nova Operação Futuros**\n\n"
+        "📋 **Etapa 1/9 - Par Perpétuo**\n\n"
+        "Digite o **par perpétuo** no formato:\n"
+        "`SIMBOLOUSDT.P`\n\n"
+        "**Exemplos:**\n"
+        "• `BTCUSDT.P` - Bitcoin Perpétuo\n"
+        "• `ETHUSDT.P` - Ethereum Perpétuo\n"
+        "• `SOLUSDT.P` - Solana Perpétuo\n"
+        "• `DOGEUSDT.P` - Dogecoin Perpétuo\n\n"
+        "⚠️ **Obrigatório:** Use o sufixo `.P` para contratos perpétuos.",
         reply_markup=KeyboardBuilder.cancel_action(),
         parse_mode=ParseMode.MARKDOWN
     )
