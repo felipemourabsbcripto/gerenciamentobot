@@ -1465,34 +1465,20 @@ async def handle_futures_timeframe_input(update: Update, context: ContextTypes.D
     
     context.user_data['futures_trade']['timeframe'] = timeframe
     context.user_data['futures_trade']['step'] = 7
+    context.user_data['futures_trade']['zone_used'] = 'management'  # Usar stop do gerenciamento
     context.user_data.pop('awaiting_futures_timeframe', None)
     
     trade = context.user_data['futures_trade']
-    pair = trade.get('pair', '???')
-    side = trade.get('side', 'long')
     
-    # Final step - show full summary and calculate risk
-    step_summary = MessageFormatter.futures_registration_step(8, trade)
+    # Ir direto para confirmação final (sem verificar zonas de liquidez)
+    from src.bot.handlers.callbacks_original import show_futures_final_confirmation
     
-    await update.message.reply_text(
-        step_summary + "\n\n"
-        f"✅ **Etapa 8/9 concluída!**\n\n"
-        "📝 **Etapa 9/9 - Cálculo de Risco e Confirmação**\n\n"
-        f"🔍 Analisando suportes e resistências para {pair} no timeframe {timeframe.upper()}...",
-        reply_markup=KeyboardBuilder.cancel_action(),
-        parse_mode=ParseMode.MARKDOWN
-    )
+    # Criar um objeto mock para simular query
+    class MockQuery:
+        async def edit_message_text(self, text, reply_markup=None, parse_mode=None):
+            await update.message.reply_text(text, reply_markup=reply_markup, parse_mode=parse_mode)
     
-    # Show zone check option
-    await update.message.reply_text(
-        f"🔍 **Deseja verificar zonas de suporte/resistência?**\n\n"
-        f"Com base no timeframe {timeframe.upper()}, o bot pode sugerir:\n"
-        f"• {'Resistências e zonas de stop (VENDA)' if side == 'short' else 'Suportes e zonas de stop (COMPRA)'}\n"
-        f"• Ajustes no stop loss baseados em zonas técnicas\n\n"
-        f"Isso ajuda a posicionar o stop em zonas mais seguras.",
-        reply_markup=KeyboardBuilder.futures_zone_check(),
-        parse_mode=ParseMode.MARKDOWN
-    )
+    await show_futures_final_confirmation(MockQuery(), context)
 
 
 async def handle_futures_stop_percent_input(update: Update, context: ContextTypes.DEFAULT_TYPE, text: str):
@@ -1501,17 +1487,17 @@ async def handle_futures_stop_percent_input(update: Update, context: ContextType
     context.user_data.pop('awaiting_futures_stop_percent', None)
     
     trade = context.user_data.get('futures_trade', {})
-    pair = trade.get('pair', '???')
-    timeframe = trade.get('timeframe', '4h')
+    trade['zone_used'] = 'management'  # Usar stop do gerenciamento
     
-    await update.message.reply_text(
-        f"✅ Timeframe: **{timeframe.upper()}**\n\n"
-        f"🔍 **Deseja verificar zona de liquidez/suporte?**\n\n"
-        f"O bot pode analisar suportes e resistências com base nos últimos pivôs de preço.\n\n"
-        f"Isso ajuda a posicionar o stop em zonas mais seguras.",
-        reply_markup=KeyboardBuilder.futures_zone_check(),
-        parse_mode=ParseMode.MARKDOWN
-    )
+    # Ir direto para confirmação final (sem verificar zonas de liquidez)
+    from src.bot.handlers.callbacks_original import show_futures_final_confirmation
+    
+    # Criar um objeto mock para simular query
+    class MockQuery:
+        async def edit_message_text(self, text, reply_markup=None, parse_mode=None):
+            await update.message.reply_text(text, reply_markup=reply_markup, parse_mode=parse_mode)
+    
+    await show_futures_final_confirmation(MockQuery(), context)
 
 
 async def handle_futures_quantity_input(update: Update, context: ContextTypes.DEFAULT_TYPE, text: str):

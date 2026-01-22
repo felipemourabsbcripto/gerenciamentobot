@@ -180,14 +180,15 @@ async def callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await handle_futures_add(query, context)
         elif data == "futures_continue_risk":
             await handle_futures_continue_risk(query, context)
-        elif data == "futures_check_zones":
-            await handle_futures_check_zones(query, context)
-        elif data == "futures_skip_zones":
-            await handle_futures_skip_zones(query, context)
-        elif data == "futures_use_management_stop":
-            await handle_futures_use_stop(query, context, "management")
-        elif data == "futures_use_zone_stop":
-            await handle_futures_use_stop(query, context, "zone")
+        # Zonas de liquidez removidas - fluxo simplificado
+        # elif data == "futures_check_zones":
+        #     await handle_futures_check_zones(query, context)
+        # elif data == "futures_skip_zones":
+        #     await handle_futures_skip_zones(query, context)
+        # elif data == "futures_use_management_stop":
+        #     await handle_futures_use_stop(query, context, "management")
+        # elif data == "futures_use_zone_stop":
+        #     await handle_futures_use_stop(query, context, "zone")
         elif data == "futures_final_confirm":
             await handle_futures_final_confirm(query, context)
         elif data == "futures_final_confirm_risky":
@@ -2727,21 +2728,10 @@ async def handle_futures_timeframe_selection(query, context: ContextTypes.DEFAUL
     
     context.user_data['futures_trade']['timeframe'] = timeframe
     context.user_data['futures_trade']['step'] = 7
+    context.user_data['futures_trade']['zone_used'] = 'management'  # Usar stop do gerenciamento
     
-    trade = context.user_data['futures_trade']
-    pair = trade.get('pair', '???')
-    side = trade.get('side', 'long')
-    
-    await query.edit_message_text(
-        f"✅ **Timeframe:** {timeframe.upper()}\n\n"
-        f"🔍 **Deseja verificar zonas de suporte/resistência?**\n\n"
-        f"Com base no timeframe {timeframe.upper()}, o bot pode sugerir:\n"
-        f"• {'Resistências e zonas de stop (VENDA)' if side == 'short' else 'Suportes e zonas de stop (COMPRA)'}\n"
-        f"• Ajustes no stop loss baseados em zonas técnicas\n\n"
-        f"Isso ajuda a posicionar o stop em zonas mais seguras.",
-        reply_markup=KeyboardBuilder.futures_zone_check(),
-        parse_mode=ParseMode.MARKDOWN
-    )
+    # Ir direto para confirmação final (sem verificar zonas de liquidez)
+    await show_futures_final_confirmation(query, context)
 
 
 async def handle_futures_done_targets(query, context: ContextTypes.DEFAULT_TYPE):
