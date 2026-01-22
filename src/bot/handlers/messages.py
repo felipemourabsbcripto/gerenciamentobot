@@ -414,21 +414,42 @@ async def handle_coin_search_input(update: Update, context: ContextTypes.DEFAULT
     
     if preset_coin:
         # Skip search, go directly to quantity
+        # Para USDT/stablecoins, preço é sempre 1.00
+        STABLECOINS = ["USDT", "USDC", "BUSD", "DAI", "TUSD"]
+        
         context.user_data['selected_coin_symbol'] = preset_coin
         context.user_data['selected_coin_name'] = preset_coin
-        context.user_data['state'] = 'waiting_quantity'
         
         try:
             quantity = float(query.replace(',', '.'))
             if quantity <= 0:
                 raise ValueError()
-                
-            context.user_data['quantity'] = quantity
-            context.user_data['state'] = 'waiting_price'
             
+            context.user_data['quantity'] = quantity
+            
+            # Para stablecoins, preço é sempre 1.00 - ir direto para confirmação
+            if preset_coin.upper() in STABLECOINS:
+                context.user_data['purchase_price'] = 1.0
+                context.user_data['state'] = 'confirming'
+                
+                await update.message.reply_text(
+                    f"💵 **Confirmar adição de {preset_coin}**\n\n"
+                    f"📦 Quantidade: **{quantity:,.2f} {preset_coin}**\n"
+                    f"💰 Valor: **U$ {quantity:,.2f}**\n\n"
+                    f"Confirma a adição à sua carteira?",
+                    reply_markup=InlineKeyboardMarkup([
+                        [InlineKeyboardButton("✅ Confirmar", callback_data="confirm_asset")],
+                        [InlineKeyboardButton("❌ Cancelar", callback_data="cancel")]
+                    ]),
+                    parse_mode=ParseMode.MARKDOWN
+                )
+                return
+            
+            # Para outras moedas, pedir preço de compra
+            context.user_data['state'] = 'waiting_price'
             await update.message.reply_text(
                 f"📦 **Quantidade:** {quantity}\n\n"
-                f"Digite o **preço de compra** (normalmente $1.00 para USDT):",
+                f"Digite o **preço de compra**:",
                 reply_markup=KeyboardBuilder.cancel_action(),
                 parse_mode=ParseMode.MARKDOWN
             )
