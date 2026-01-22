@@ -2500,15 +2500,18 @@ async def handle_futures_add(query, context: ContextTypes.DEFAULT_TYPE):
     
     await query.edit_message_text(
         "📝 **Nova Operação Futuros**\n\n"
-        "📋 **Etapa 1/9 - Par Perpétuo**\n\n"
-        "Digite o **par perpétuo** no formato:\n"
-        "`SIMBOLOUSDT.P`\n\n"
-        "**Exemplos:**\n"
+        "📋 **Etapa 1/9 - Par de Trading**\n\n"
+        "Digite o **par** em um dos formatos:\n\n"
+        "**Perpétuo (.P):**\n"
         "• `BTCUSDT.P` - Bitcoin Perpétuo\n"
-        "• `ETHUSDT.P` - Ethereum Perpétuo\n"
-        "• `SOLUSDT.P` - Solana Perpétuo\n"
-        "• `DOGEUSDT.P` - Dogecoin Perpétuo\n\n"
-        "⚠️ **Obrigatório:** Use o sufixo `.P` para contratos perpétuos.",
+        "• `ETHUSDT.P` - Ethereum Perpétuo\n\n"
+        "**Spot/Margem:**\n"
+        "• `BTCUSDT` - Bitcoin/USDT\n"
+        "• `ETHUSDC` - Ethereum/USDC\n\n"
+        "**Formatos aceitos:**\n"
+        "✅ `SIMBOLOUSDT.P` (Perpétuo)\n"
+        "✅ `SIMBOLOUSDT` (USDT)\n"
+        "✅ `SIMBOLOUSDC` (USDC)",
         reply_markup=KeyboardBuilder.cancel_action(),
         parse_mode=ParseMode.MARKDOWN
     )
